@@ -123,4 +123,6 @@ def internal_error(error):
 if __name__ == "__main__":
     # Deepnote 通常使用 8080 port
     port = int(os.environ.get("PORT", 8080))
+    if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
