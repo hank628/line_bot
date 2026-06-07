@@ -386,7 +386,7 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📊統計 - 查看統計名詞\n• ⚽社會 - 查看社會學名詞\n• 🏕️探索 - 查看探索教育名詞\n• ✅待辦 - 管理待辦事項\n\n📝 查詢方式：輸入「統計 1」查第1個統計名詞"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📊統計 - 查看統計名詞\n• ⚽社會 - 查看社會學名詞\n• 🏕️探索 - 查看探索教育名詞\n• ✅待辦 - 管理待辦事項\n\n📝 查詢方式：\n• 統計 3 或 se3\n• 社會學 2 或 ss2\n• 探索 1 或 ae1"
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -431,7 +431,7 @@ def handle_message(event):
     
     # ========== 主選單 ==========
     if msg_lower in ["幫助", "選單", "menu", "help"]:
-        reply = TextMessage(text="🤖 請點擊下方按鈕：\n\n📝 查詢方式：輸入「統計 1」查第1個統計名詞", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text="🤖 請點擊下方按鈕：\n\n📝 查詢方式：\n• 統計 3 或 se3\n• 社會學 2 或 ss2\n• 探索 1 或 ae1", quick_reply=get_main_quick_reply())
     
     # ========== 天氣 ==========
     elif msg_lower in ["天氣", "weather"]:
@@ -461,7 +461,7 @@ def handle_message(event):
             text = f"📊 統計專有名詞 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「統計 數字」查詳細（例如：統計 1）\n💡 換頁：輸入「統計下一頁」或「統計上一頁」"
+            text += f"\n💡 查詢方式：輸入「統計 數字」或「se數字」查詳細（例如：統計 1 或 se1）\n💡 換頁：輸入「統計下一頁」或「統計上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
@@ -475,7 +475,7 @@ def handle_message(event):
             text = f"⚽ 運動社會學 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「社會學 數字」查詳細（例如：社會學 1）\n💡 換頁：輸入「社會學下一頁」或「社會學上一頁」"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」或「ss數字」查詳細（例如：社會學 1 或 ss1）\n💡 換頁：輸入「社會學下一頁」或「社會學上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
@@ -489,7 +489,7 @@ def handle_message(event):
             text = f"🏕️ 探索教育 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「探索 數字」查詳細（例如：探索 1）\n💡 換頁：輸入「探索下一頁」或「探索上一頁」"
+            text += f"\n💡 查詢方式：輸入「探索 數字」或「ae數字」查詳細（例如：探索 1 或 ae1）\n💡 換頁：輸入「探索下一頁」或「探索上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_main_quick_reply())
@@ -514,7 +514,7 @@ def handle_message(event):
             text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「統計 數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「統計 數字」或「se數字」查詳細"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
@@ -539,7 +539,7 @@ def handle_message(event):
             text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「社會學 數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」或「ss數字」查詳細"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
@@ -564,13 +564,60 @@ def handle_message(event):
             text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「探索 數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「探索 數字」或「ae數字」查詳細"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
     
-    # ========== 統計數字查詢（方案二：使用者輸入「統計 1」）==========
-    elif msg_lower.startswith("統計 "):
+    # ========== 統計快捷指令 se3 ==========
+    elif msg_lower.startswith("se") and len(msg_lower) > 2 and msg_lower[2:].isdigit():
+        num = int(msg_lower[2:])
+        data, total = get_stats_list(1)
+        if 1 <= num <= len(data):
+            detail = get_stats_detail(data[num-1][0])
+            if detail:
+                term, trans, definition, code = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                if code:
+                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+    
+    # ========== 社會學快捷指令 ss2 ==========
+    elif msg_lower.startswith("ss") and len(msg_lower) > 2 and msg_lower[2:].isdigit():
+        num = int(msg_lower[2:])
+        data, total = get_socio_list(1)
+        if 1 <= num <= len(data):
+            detail = get_socio_detail(data[num-1][0])
+            if detail:
+                term, trans, definition = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+    
+    # ========== 探索教育快捷指令 ae1 ==========
+    elif msg_lower.startswith("ae") and len(msg_lower) > 2 and msg_lower[2:].isdigit():
+        num = int(msg_lower[2:])
+        data, total = get_outdoor_list(1)
+        if 1 <= num <= len(data):
+            detail = get_outdoor_detail(data[num-1][0])
+            if detail:
+                term, trans, definition = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+    
+    # ========== 統計數字查詢（原本方式：統計 1）==========
+    elif msg_lower.startswith("統計 ") and len(msg_lower) > 3:
         parts = msg_lower.split()
         if len(parts) == 2 and parts[1].isdigit():
             num = int(parts[1])
@@ -588,10 +635,10 @@ def handle_message(event):
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="請輸入「統計 數字」，例如：統計 1", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請輸入「統計 數字」，例如：統計 1 或 se1", quick_reply=get_main_quick_reply())
     
-    # ========== 社會學數字查詢 ==========
-    elif msg_lower.startswith("社會學 "):
+    # ========== 社會學數字查詢（原本方式：社會學 2）==========
+    elif msg_lower.startswith("社會學 ") and len(msg_lower) > 4:
         parts = msg_lower.split()
         if len(parts) == 2 and parts[1].isdigit():
             num = int(parts[1])
@@ -607,10 +654,10 @@ def handle_message(event):
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="請輸入「社會學 數字」，例如：社會學 1", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請輸入「社會學 數字」，例如：社會學 1 或 ss1", quick_reply=get_main_quick_reply())
     
-    # ========== 探索教育數字查詢 ==========
-    elif msg_lower.startswith("探索 "):
+    # ========== 探索教育數字查詢（原本方式：探索 3）==========
+    elif msg_lower.startswith("探索 ") and len(msg_lower) > 3:
         parts = msg_lower.split()
         if len(parts) == 2 and parts[1].isdigit():
             num = int(parts[1])
@@ -626,7 +673,7 @@ def handle_message(event):
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="請輸入「探索 數字」，例如：探索 1", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請輸入「探索 數字」，例如：探索 1 或 ae1", quick_reply=get_main_quick_reply())
     
     # ========== 關鍵字搜尋（保留）==========
     elif msg_lower.startswith("查 "):
@@ -734,7 +781,7 @@ def handle_message(event):
     
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 查看統計名詞\n• 社會學 - 查看社會學名詞\n• 探索 - 查看探索教育名詞\n• 新增 買牛奶 - 待辦\n\n📝 查詢：輸入「統計 1」查第1個統計名詞",
+            text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 查看統計名詞\n• 社會學 - 查看社會學名詞\n• 探索 - 查看探索教育名詞\n• 新增 買牛奶 - 待辦\n\n📝 快捷查詢：\n• se3 - 查統計第3個\n• ss2 - 查社會學第2個\n• ae1 - 查探索第1個",
             quick_reply=get_main_quick_reply()
         )
     
@@ -842,7 +889,7 @@ def admin_delete(table_type, id):
     conn.close()
     return redirect(f'/admin/{table_type}')
 
-# CSV 匯入功能（完整版）
+# CSV 匯入功能
 @app.route('/admin/import_csv/<table_type>', methods=['POST'])
 @login_required
 def admin_import_csv(table_type):
@@ -971,7 +1018,7 @@ TABLE_TEMPLATE = '''
     </div>
     
     <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
-        <td><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
+        <tr><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
         {% for row in rows %}
         <tr>
             <form method="post" action="/admin/edit/{{ table_type }}/{{ row[0] }}">
