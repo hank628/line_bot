@@ -30,9 +30,16 @@ app.secret_key = SECRET_KEY
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# ========== 初始化資料庫 ==========
+# ========== 初始化資料庫（自動重建）==========
 def init_db():
-    conn = sqlite3.connect('course_bot.db')
+    # 強制刪除舊資料庫並重建（解決資料表結構問題）
+    import os
+    db_path = 'course_bot.db'
+    if os.path.exists(db_path):
+        os.remove(db_path)
+        print("✅ 已刪除舊資料庫，將建立新資料庫")
+    
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
     # 英文單字表
@@ -110,69 +117,61 @@ def init_db():
     # ========== 預設資料 ==========
     
     # 預設英文單字
-    c.execute("SELECT COUNT(*) FROM vocabulary")
-    if c.fetchone()[0] == 0:
-        default_vocab = [
-            ("apple", "蘋果 🍎", "I eat an apple every day."),
-            ("book", "書 📚", "This is a good book."),
-            ("computer", "電腦 💻", "I use computer to study."),
-            ("teacher", "老師 👩‍🏫", "My teacher is very kind."),
-            ("student", "學生 🧑‍🎓", "Every student should do homework."),
-        ]
-        c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
+    default_vocab = [
+        ("apple", "蘋果 🍎", "I eat an apple every day."),
+        ("book", "書 📚", "This is a good book."),
+        ("computer", "電腦 💻", "I use computer to study."),
+        ("teacher", "老師 👩‍🏫", "My teacher is very kind."),
+        ("student", "學生 🧑‍🎓", "Every student should do homework."),
+    ]
+    c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
     
     # 預設統計名詞
-    c.execute("SELECT COUNT(*) FROM glossary_stats")
-    if c.fetchone()[0] == 0:
-        default_stats = [
-            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
-             "from scipy import stats\nimport numpy as np\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
-            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
-             "from scipy import stats\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
-             "from scipy import stats\n\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\nr, p_value = stats.pearsonr(x, y)", 1),
-            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", 
-             "from sklearn.linear_model import LinearRegression\n\nX = [[1], [2], [3], [4], [5]]\ny = [2, 4, 6, 8, 10]\n\nmodel = LinearRegression()\nmodel.fit(X, y)\npredict = model.predict([[6]])\nprint(f'預測值: {predict[0]:.2f}')", 0),
-            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", 
-             "from scipy import stats\n\nobserved = [[10, 20, 30], [6, 9, 17]]\nchi2, p, dof, expected = stats.chi2_contingency(observed)\nprint(f'卡方值: {chi2:.4f}')", 0),
-            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", 
-             "if p_value < 0.05:\n    print('統計顯著')\nelse:\n    print('未達統計顯著')", 1),
-        ]
-        c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
+    default_stats = [
+        ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
+         "from scipy import stats\nimport numpy as np\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
+        ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
+         "from scipy import stats\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
+        ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
+         "from scipy import stats\n\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\nr, p_value = stats.pearsonr(x, y)", 1),
+        ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", 
+         "from sklearn.linear_model import LinearRegression\n\nX = [[1], [2], [3], [4], [5]]\ny = [2, 4, 6, 8, 10]\n\nmodel = LinearRegression()\nmodel.fit(X, y)\npredict = model.predict([[6]])\nprint(f'預測值: {predict[0]:.2f}')", 0),
+        ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", 
+         "from scipy import stats\n\nobserved = [[10, 20, 30], [6, 9, 17]]\nchi2, p, dof, expected = stats.chi2_contingency(observed)\nprint(f'卡方值: {chi2:.4f}')", 0),
+        ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", 
+         "if p_value < 0.05:\n    print('統計顯著')\nelse:\n    print('未達統計顯著')", 1),
+    ]
+    c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
     
     # 預設社會學名詞
-    c.execute("SELECT COUNT(*) FROM glossary_socio")
-    if c.fetchone()[0] == 0:
-        default_socio = [
-            ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
-            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象，運動參與也受此影響", 1),
-            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待與刻板印象", 1),
-            ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
-            ("symbolic interactionism", "符號互動論", "透過運動中的符號、語言和互動來理解社會意義的理論視角", 0),
-            ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
-            ("functionalist theory", "功能論", "分析運動對社會穩定、整合和秩序維持的貢獻", 0),
-            ("commercialization", "商業化", "運動逐漸被市場邏輯主導，追求利潤極大化的現象", 0),
-            ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
-            ("sports nationalism", "運動民族主義", "透過國際運動賽事表達和強化國家認同與愛國情懷", 0),
-        ]
-        c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
+    default_socio = [
+        ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
+        ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象，運動參與也受此影響", 1),
+        ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待與刻板印象", 1),
+        ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
+        ("symbolic interactionism", "符號互動論", "透過運動中的符號、語言和互動來理解社會意義的理論視角", 0),
+        ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
+        ("functionalist theory", "功能論", "分析運動對社會穩定、整合和秩序維持的貢獻", 0),
+        ("commercialization", "商業化", "運動逐漸被市場邏輯主導，追求利潤極大化的現象", 0),
+        ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
+        ("sports nationalism", "運動民族主義", "透過國際運動賽事表達和強化國家認同與愛國情懷", 0),
+    ]
+    c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
     
     # 預設探索教育名詞
-    c.execute("SELECT COUNT(*) FROM glossary_outdoor")
-    if c.fetchone()[0] == 0:
-        default_outdoor = [
-            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程：具體經驗→反思觀察→抽象概念→主動驗證", 1),
-            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度，確保心理安全感", 1),
-            ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾，確保每個人的價值被尊重", 1),
-            ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
-            ("comfort zone", "舒適圈", "個人感到熟悉、安全、無壓力的狀態區域", 0),
-            ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
-            ("panic zone", "恐慌圈", "壓力過大導致無法學習和成長的區域", 0),
-            ("ropes course", "繩索課程", "利用高低空繩索設施進行的體驗教育活動", 0),
-            ("initiative task", "團隊任務", "需要團隊合作解決問題的活動，通常有明確目標和限制條件", 0),
-            ("processing", "引導討論", "帶領參與者反思活動經驗，連結到日常生活的引導技巧", 1),
-        ]
-        c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
+    default_outdoor = [
+        ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程：具體經驗→反思觀察→抽象概念→主動驗證", 1),
+        ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度，確保心理安全感", 1),
+        ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾，確保每個人的價值被尊重", 1),
+        ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
+        ("comfort zone", "舒適圈", "個人感到熟悉、安全、無壓力的狀態區域", 0),
+        ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
+        ("panic zone", "恐慌圈", "壓力過大導致無法學習和成長的區域", 0),
+        ("ropes course", "繩索課程", "利用高低空繩索設施進行的體驗教育活動", 0),
+        ("initiative task", "團隊任務", "需要團隊合作解決問題的活動，通常有明確目標和限制條件", 0),
+        ("processing", "引導討論", "帶領參與者反思活動經驗，連結到日常生活的引導技巧", 1),
+    ]
+    c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
     
     conn.commit()
     conn.close()
@@ -552,7 +551,7 @@ def handle_message(event):
                 text = f"{title} (第{page}頁/共{total_pages}頁)\n\n"
                 for i, (sid, term, trans) in enumerate(data, 1):
                     text += f"{i}. {term} - {trans}\n"
-                text += f"\n💡 輸入數字查詳細，輸入「下一頁」/「上一頁」"
+                text += f"\n💡 輸入數字查詳細"
                 reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
             else:
                 reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
@@ -800,7 +799,7 @@ def handle_message(event):
     
     # ========== 取得我的 User ID（僅老師可用）==========
     elif msg_lower == "取得我的id" and is_teacher:
-        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到 Render 環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
     
     else:
         reply = TextMessage(
@@ -1035,7 +1034,7 @@ STUDENT_TODOS_TEMPLATE = '''
         {% for row in rows %}
         <tr>
             <td>{{ row[0] }}</td>
-            <td>{{ row[1][:20] }}...</td>
+            <td>{{ row[1][:20] }}...{% if row[1]|length > 20 %}{% endif %}</td>
             <td>{{ row[2] }}</td>
             <td>{{ row[3] }}</td>
             <td>{% if row[4] == 'pending' %}⏳ 待完成{% else %}✅ 已完成{% endif %}</td>
