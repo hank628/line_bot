@@ -428,18 +428,18 @@ def handle_message(event):
     # 判斷是否為老師
     is_teacher = (user_id == TEACHER_USER_ID)
     
-    # 主選單
+    # ========== 主選單 ==========
     if msg_lower in ["幫助", "選單", "menu", "help"]:
         reply = TextMessage(text="🤖 請點擊下方按鈕：", quick_reply=get_main_quick_reply())
     
-    # 天氣
+    # ========== 天氣 ==========
     elif msg_lower in ["天氣", "weather"]:
         reply = TextMessage(
             text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置",
             quick_reply=get_main_quick_reply()
         )
     
-    # 英文單字
+    # ========== 英文單字 ==========
     elif msg_lower in ["單字", "english", "vocab"]:
         result = get_random_vocab()
         if result:
@@ -453,7 +453,10 @@ def handle_message(event):
     
     # ========== 統計 ==========
     elif msg_lower in ["統計", "statistics"]:
-        session['current_subject'] = 'stats'
+        # 設定科目專用的 session flag
+        session['stats_active'] = True
+        session['socio_active'] = False
+        session['outdoor_active'] = False
         session['stats_page'] = 1
         data, total = get_stats_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -469,7 +472,10 @@ def handle_message(event):
     
     # ========== 社會學 ==========
     elif msg_lower in ["社會學", "sociology"]:
-        session['current_subject'] = 'socio'
+        # 設定科目專用的 session flag
+        session['stats_active'] = False
+        session['socio_active'] = True
+        session['outdoor_active'] = False
         session['socio_page'] = 1
         data, total = get_socio_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -485,7 +491,10 @@ def handle_message(event):
     
     # ========== 探索教育 ==========
     elif msg_lower in ["探索", "outdoor"]:
-        session['current_subject'] = 'outdoor'
+        # 設定科目專用的 session flag
+        session['stats_active'] = False
+        session['socio_active'] = False
+        session['outdoor_active'] = True
         session['outdoor_page'] = 1
         data, total = get_outdoor_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -501,9 +510,8 @@ def handle_message(event):
     
     # ========== 分頁處理 ==========
     elif msg_lower in ["下一頁", "上一頁"]:
-        current_subject = session.get('current_subject', '')
-        
-        if current_subject == 'stats':
+        # 檢查哪個科目是活躍的
+        if session.get('stats_active', False):
             page = session.get('stats_page', 1)
             if msg_lower == "下一頁":
                 page += 1
@@ -516,7 +524,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_stats_list(page)
             session['stats_page'] = page
-            session['current_subject'] = 'stats'  # 確保科目不遺失
+            session['stats_active'] = True
             
             if data:
                 text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
@@ -527,7 +535,7 @@ def handle_message(event):
             else:
                 reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
         
-        elif current_subject == 'socio':
+        elif session.get('socio_active', False):
             page = session.get('socio_page', 1)
             if msg_lower == "下一頁":
                 page += 1
@@ -540,7 +548,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_socio_list(page)
             session['socio_page'] = page
-            session['current_subject'] = 'socio'  # 確保科目不遺失
+            session['socio_active'] = True
             
             if data:
                 text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
@@ -551,7 +559,7 @@ def handle_message(event):
             else:
                 reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
         
-        elif current_subject == 'outdoor':
+        elif session.get('outdoor_active', False):
             page = session.get('outdoor_page', 1)
             if msg_lower == "下一頁":
                 page += 1
@@ -564,7 +572,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_outdoor_list(page)
             session['outdoor_page'] = page
-            session['current_subject'] = 'outdoor'  # 確保科目不遺失
+            session['outdoor_active'] = True
             
             if data:
                 text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
@@ -577,12 +585,12 @@ def handle_message(event):
         else:
             reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
     
-    # ========== 數字查詢（修正版 - 直接從 session 讀取 current_subject）==========
+    # ========== 數字查詢（使用科目專用 flag）==========
     elif msg_lower.isdigit():
         num = int(msg_lower)
-        current_subject = session.get('current_subject', '')
         
-        if current_subject == 'stats':
+        # 統計查詢
+        if session.get('stats_active', False):
             page = session.get('stats_page', 1)
             data, total = get_stats_list(page)
             if 1 <= num <= len(data):
@@ -598,7 +606,8 @@ def handle_message(event):
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         
-        elif current_subject == 'socio':
+        # 社會學查詢
+        elif session.get('socio_active', False):
             page = session.get('socio_page', 1)
             data, total = get_socio_list(page)
             if 1 <= num <= len(data):
@@ -612,7 +621,8 @@ def handle_message(event):
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         
-        elif current_subject == 'outdoor':
+        # 探索教育查詢
+        elif session.get('outdoor_active', False):
             page = session.get('outdoor_page', 1)
             data, total = get_outdoor_list(page)
             if 1 <= num <= len(data):
