@@ -61,7 +61,6 @@ def init_db():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     
-    # 英文單字表
     c.execute('''CREATE TABLE IF NOT EXISTS vocabulary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         word TEXT UNIQUE,
@@ -69,7 +68,6 @@ def init_db():
         example TEXT
     )''')
     
-    # 統計專有名詞表
     c.execute('''CREATE TABLE IF NOT EXISTS glossary_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -79,7 +77,6 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 運動社會學專有名詞表
     c.execute('''CREATE TABLE IF NOT EXISTS glossary_socio (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -88,7 +85,6 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 探索教育專有名詞表
     c.execute('''CREATE TABLE IF NOT EXISTS glossary_outdoor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -97,7 +93,6 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 待辦事項表
     c.execute('''CREATE TABLE IF NOT EXISTS todos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT,
@@ -107,7 +102,6 @@ def init_db():
         status TEXT DEFAULT 'pending'
     )''')
     
-    # 使用者表
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY,
         created_at TEXT
@@ -119,19 +113,19 @@ def init_db():
         default_vocab = [
             ("apple", "蘋果 🍎", "I eat an apple every day."),
             ("book", "書 📚", "This is a good book."),
-            ("t-test", "t檢定", "比較兩組平均數差異"),
-            ("ANOVA", "變異數分析", "比較多組平均數差異"),
         ]
         c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
     
-    # 預設統計名詞
+    # 預設統計名詞（修正：加入更多不同名詞）
     c.execute("SELECT COUNT(*) FROM glossary_stats")
     if c.fetchone()[0] == 0:
         default_stats = [
             ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
             ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", "from scipy import stats\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個變數之間的線性關係", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
-            ("regression", "迴歸分析", "建立預測模型", "from sklearn.linear_model import LinearRegression", 1),
+            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
+            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", "from sklearn.linear_model import LinearRegression\nmodel = LinearRegression()\nmodel.fit(X, y)", 1),
+            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", "from scipy import stats\nchi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)", 0),
+            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", "if p_value < 0.05:\n    print('統計顯著')", 1),
         ]
         c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
     
@@ -139,10 +133,10 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM glossary_socio")
     if c.fetchone()[0] == 0:
         default_socio = [
-            ("sports socialization", "運動社會化", "透過運動學習社會規範的過程", 1),
-            ("social stratification", "社會階層化", "社會資源分配不均的現象", 1),
-            ("gender ideology", "性別意識形態", "社會對性別角色的期待", 1),
-            ("sports fan", "運動迷", "對運動有強烈認同的人", 1),
+            ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
+            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
+            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
+            ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
         ]
         c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
     
@@ -150,9 +144,9 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM glossary_outdoor")
     if c.fetchone()[0] == 0:
         default_outdoor = [
-            ("experiential learning", "體驗式學習", "從經驗中學習的循環過程", 1),
-            ("challenge by choice", "自願挑戰", "可自行決定參與程度", 1),
-            ("debriefing", "反思回饋", "活動後的引導討論", 1),
+            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
+            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
+            ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
         ]
         c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
     
@@ -243,7 +237,7 @@ def get_course_quick_reply():
 def get_stats_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_stats ORDER BY term")
+    c.execute("SELECT id, term, translation FROM glossary_stats ORDER BY id")
     results = c.fetchall()
     conn.close()
     return results
@@ -259,7 +253,7 @@ def get_stats_detail(term_id):
 def get_socio_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_socio ORDER BY term")
+    c.execute("SELECT id, term, translation FROM glossary_socio ORDER BY id")
     results = c.fetchall()
     conn.close()
     return results
@@ -275,7 +269,7 @@ def get_socio_detail(term_id):
 def get_outdoor_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_outdoor ORDER BY term")
+    c.execute("SELECT id, term, translation FROM glossary_outdoor ORDER BY id")
     results = c.fetchall()
     conn.close()
     return results
@@ -428,43 +422,135 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
-    # 統計
+    # ========== 統計 ==========
     elif msg_lower in ["統計", "statistics"]:
         stats_list = get_stats_list()
         if stats_list:
             text = "📊 統計專有名詞\n\n"
             for i, (sid, term, trans) in enumerate(stats_list, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細，或輸入「查 t-test」搜尋"
+            text += "\n💡 輸入數字查詳細（如：1），或輸入「查 關鍵字」搜尋"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_course_quick_reply())
     
-    # 社會學
+    # 統計數字查詢（必須在"統計"之後觸發）
+    elif msg_lower.isdigit() and session.get('last_subject') == 'stats':
+        num = int(msg_lower)
+        stats_list = get_stats_list()
+        if 1 <= num <= len(stats_list):
+            detail = get_stats_detail(stats_list[num-1][0])
+            if detail:
+                term, trans, definition, code = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                if code:
+                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+        else:
+            reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
+    
+    # ========== 社會學 ==========
     elif msg_lower in ["社會學", "sociology"]:
+        session['last_subject'] = 'socio'
         socio_list = get_socio_list()
         if socio_list:
             text = "⚽ 運動社會學\n\n"
             for i, (sid, term, trans) in enumerate(socio_list, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細"
+            text += "\n💡 輸入數字查詳細（如：1）"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_course_quick_reply())
     
-    # 探索教育
+    elif msg_lower.isdigit() and session.get('last_subject') == 'socio':
+        num = int(msg_lower)
+        socio_list = get_socio_list()
+        if 1 <= num <= len(socio_list):
+            detail = get_socio_detail(socio_list[num-1][0])
+            if detail:
+                term, trans, definition = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+        else:
+            reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
+    
+    # ========== 探索教育 ==========
     elif msg_lower in ["探索", "outdoor"]:
+        session['last_subject'] = 'outdoor'
         outdoor_list = get_outdoor_list()
         if outdoor_list:
             text = "🏕️ 探索教育\n\n"
             for i, (oid, term, trans) in enumerate(outdoor_list, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細"
+            text += "\n💡 輸入數字查詳細（如：1）"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
     
-    # 關鍵字查詢
+    elif msg_lower.isdigit() and session.get('last_subject') == 'outdoor':
+        num = int(msg_lower)
+        outdoor_list = get_outdoor_list()
+        if 1 <= num <= len(outdoor_list):
+            detail = get_outdoor_detail(outdoor_list[num-1][0])
+            if detail:
+                term, trans, definition = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            else:
+                reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+        else:
+            reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
+    
+    # ========== 通用數字查詢（如果沒有 last_subject，嘗試所有）==========
+    elif msg_lower.isdigit():
+        num = int(msg_lower)
+        found = False
+        
+        # 嘗試統計
+        stats_list = get_stats_list()
+        if 1 <= num <= len(stats_list):
+            detail = get_stats_detail(stats_list[num-1][0])
+            if detail:
+                term, trans, definition, code = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                if code:
+                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                found = True
+                session['last_subject'] = 'stats'
+        
+        # 嘗試社會學
+        if not found:
+            socio_list = get_socio_list()
+            if 1 <= num <= len(socio_list):
+                detail = get_socio_detail(socio_list[num-1][0])
+                if detail:
+                    term, trans, definition = detail
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                    found = True
+                    session['last_subject'] = 'socio'
+        
+        # 嘗試探索教育
+        if not found:
+            outdoor_list = get_outdoor_list()
+            if 1 <= num <= len(outdoor_list):
+                detail = get_outdoor_detail(outdoor_list[num-1][0])
+                if detail:
+                    term, trans, definition = detail
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                    found = True
+                    session['last_subject'] = 'outdoor'
+        
+        if not found:
+            reply = TextMessage(text="請輸入正確的編號，或先選擇科目（統計/社會學/探索）", quick_reply=get_course_quick_reply())
+    
+    # ========== 關鍵字查詢 ==========
     elif msg_lower.startswith("查 "):
         keyword = msg_lower[3:]
         
@@ -483,46 +569,7 @@ def handle_message(event):
             reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_course_quick_reply())
         conn.close()
     
-    # 數字查詢
-    elif msg_lower.isdigit():
-        num = int(msg_lower)
-        found = False
-        
-        stats_list = get_stats_list()
-        if 1 <= num <= len(stats_list):
-            detail = get_stats_detail(stats_list[num-1][0])
-            if detail:
-                term, trans, definition, code = detail
-                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                if code:
-                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                found = True
-        
-        if not found:
-            socio_list = get_socio_list()
-            if 1 <= num <= len(socio_list):
-                detail = get_socio_detail(socio_list[num-1][0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                    found = True
-        
-        if not found:
-            outdoor_list = get_outdoor_list()
-            if 1 <= num <= len(outdoor_list):
-                detail = get_outdoor_detail(outdoor_list[num-1][0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                    found = True
-        
-        if not found:
-            reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
-    
-    # 待辦事項
+    # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
         task = msg[3:]
         todo_date = datetime.now().strftime('%Y-%m-%d')
@@ -563,7 +610,7 @@ def handle_message(event):
     
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：",
+            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：\n\n或輸入：\n• 統計 - 查看統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育名詞\n• 查 t-test - 搜尋\n• 新增 買牛奶 - 待辦",
             quick_reply=get_main_quick_reply()
         )
     
