@@ -22,7 +22,7 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
-TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "")  # 老師的 LINE User ID
+TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -30,28 +30,28 @@ app.secret_key = SECRET_KEY
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# ========== 初始化資料庫（自動重建）==========
+# ========== 初始化資料庫（強制寫入預設資料）==========
 def init_db():
-    # 強制刪除舊資料庫並重建（解決資料表結構問題）
     import os
     db_path = 'course_bot.db'
+    
+    # 刪除舊資料庫
     if os.path.exists(db_path):
         os.remove(db_path)
-        print("✅ 已刪除舊資料庫，將建立新資料庫")
+        print("✅ 已刪除舊資料庫")
     
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
-    # 英文單字表
-    c.execute('''CREATE TABLE IF NOT EXISTS vocabulary (
+    # 建立所有資料表
+    c.execute('''CREATE TABLE vocabulary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         word TEXT UNIQUE,
         meaning TEXT,
         example TEXT
     )''')
     
-    # 統計專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS glossary_stats (
+    c.execute('''CREATE TABLE glossary_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -60,8 +60,7 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 運動社會學專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS glossary_socio (
+    c.execute('''CREATE TABLE glossary_socio (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -69,8 +68,7 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 探索教育專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS glossary_outdoor (
+    c.execute('''CREATE TABLE glossary_outdoor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -78,8 +76,7 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 學生個人待辦表
-    c.execute('''CREATE TABLE IF NOT EXISTS student_todos (
+    c.execute('''CREATE TABLE student_todos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT,
         task TEXT,
@@ -88,8 +85,7 @@ def init_db():
         status TEXT DEFAULT 'pending'
     )''')
     
-    # 老師個人待辦表
-    c.execute('''CREATE TABLE IF NOT EXISTS teacher_todos (
+    c.execute('''CREATE TABLE teacher_todos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task TEXT,
         todo_date TEXT,
@@ -98,8 +94,7 @@ def init_db():
         status TEXT DEFAULT 'pending'
     )''')
     
-    # 全班共同待辦表
-    c.execute('''CREATE TABLE IF NOT EXISTS class_todos (
+    c.execute('''CREATE TABLE class_todos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task TEXT,
         todo_date TEXT,
@@ -108,15 +103,12 @@ def init_db():
         status TEXT DEFAULT 'pending'
     )''')
     
-    # 使用者表
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
+    c.execute('''CREATE TABLE users (
         user_id TEXT PRIMARY KEY,
         created_at TEXT
     )''')
     
-    # ========== 預設資料 ==========
-    
-    # 預設英文單字
+    # ========== 寫入預設英文單字 ==========
     default_vocab = [
         ("apple", "蘋果 🍎", "I eat an apple every day."),
         ("book", "書 📚", "This is a good book."),
@@ -125,8 +117,9 @@ def init_db():
         ("student", "學生 🧑‍🎓", "Every student should do homework."),
     ]
     c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
+    print("✅ 已寫入英文單字")
     
-    # 預設統計名詞
+    # ========== 寫入預設統計名詞 ==========
     default_stats = [
         ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
          "from scipy import stats\nimport numpy as np\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
@@ -142,8 +135,9 @@ def init_db():
          "if p_value < 0.05:\n    print('統計顯著')\nelse:\n    print('未達統計顯著')", 1),
     ]
     c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
+    print("✅ 已寫入統計名詞")
     
-    # 預設社會學名詞
+    # ========== 寫入預設社會學名詞 ==========
     default_socio = [
         ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
         ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象，運動參與也受此影響", 1),
@@ -157,8 +151,9 @@ def init_db():
         ("sports nationalism", "運動民族主義", "透過國際運動賽事表達和強化國家認同與愛國情懷", 0),
     ]
     c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
+    print("✅ 已寫入社會學名詞")
     
-    # 預設探索教育名詞
+    # ========== 寫入預設探索教育名詞 ==========
     default_outdoor = [
         ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程：具體經驗→反思觀察→抽象概念→主動驗證", 1),
         ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度，確保心理安全感", 1),
@@ -172,8 +167,20 @@ def init_db():
         ("processing", "引導討論", "帶領參與者反思活動經驗，連結到日常生活的引導技巧", 1),
     ]
     c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
+    print("✅ 已寫入探索教育名詞")
     
     conn.commit()
+    
+    # 驗證寫入結果
+    c.execute("SELECT COUNT(*) FROM vocabulary")
+    print(f"📖 英文單字筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_stats")
+    print(f"📊 統計名詞筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_socio")
+    print(f"⚽ 社會學名詞筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_outdoor")
+    print(f"🏕️ 探索教育名詞筆數: {c.fetchone()[0]}")
+    
     conn.close()
     print("✅ 資料庫初始化完成")
 
@@ -378,7 +385,7 @@ def push_todos():
     conn.commit()
     conn.close()
 
-# ========== 啟動排程（每分鐘檢查一次）==========
+# ========== 啟動排程 ==========
 scheduler = BackgroundScheduler(timezone='Asia/Taipei')
 scheduler.add_job(push_todos, CronTrigger(minute='*'))
 scheduler.start()
@@ -736,12 +743,10 @@ def handle_message(event):
         c = conn.cursor()
         
         if is_teacher:
-            # 老師的待辦存到老師待辦表
             c.execute("INSERT INTO teacher_todos (task, todo_date, todo_time, created_at) VALUES (?, ?, ?, ?)",
                       (task, todo_date, "23:59", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             reply_text = f"✅ 已新增老師待辦：{task}"
         else:
-            # 學生的待辦存到學生待辦表
             c.execute("INSERT INTO student_todos (user_id, task, todo_date, created_at) VALUES (?, ?, ?, ?)",
                       (user_id, task, todo_date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             reply_text = f"✅ 已新增個人待辦：{task}"
@@ -755,7 +760,6 @@ def handle_message(event):
         c = conn.cursor()
         
         if is_teacher:
-            # 老師查看自己的待辦
             c.execute("SELECT id, task, todo_date FROM teacher_todos WHERE status = 'pending' ORDER BY todo_date")
             todos = c.fetchall()
             if todos:
@@ -766,7 +770,6 @@ def handle_message(event):
             else:
                 text = "📋 沒有老師待辦事項\n\n💡 輸入「新增 買牛奶」新增"
         else:
-            # 學生查看自己的待辦
             c.execute("SELECT id, task, todo_date FROM student_todos WHERE user_id = ? AND status = 'pending' ORDER BY todo_date", (user_id,))
             todos = c.fetchall()
             if todos:
@@ -797,8 +800,8 @@ def handle_message(event):
         except:
             reply = TextMessage(text="請輸入：完成 1", quick_reply=get_main_quick_reply())
     
-    # ========== 取得我的 User ID（僅老師可用）==========
-    elif msg_lower == "取得我的id" and is_teacher:
+    # ========== 取得我的 User ID ==========
+    elif msg_lower == "取得我的id":
         reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到 Render 環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
     
     else:
@@ -1002,7 +1005,7 @@ TABLE_TEMPLATE = '''
     <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
         <tr><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
         {% for row in rows %}
-        <tr>
+        <td>
             <form method="post" action="/admin/edit/{{ table_type }}/{{ row[0] }}">
                 <td>{{ row[0] }}</td>
                 {% for i in range(info.columns|length) %}
