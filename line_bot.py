@@ -207,58 +207,20 @@ def init_db():
 init_db()
 
 # ========== 天氣函數（中央氣象署 API + 備用）==========
-def get_weather_taiwan_city(city_name="臺北市"):
-    """使用中央氣象署 API 取得台灣縣市天氣"""
-    api_city = CITY_MAPPING.get(city_name, city_name)
-    
+def get_weather_by_coords(lat, lon):
     try:
-        url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization={CWA_API_KEY}&locationName={api_city}"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
         response = requests.get(url, timeout=10)
-        
         if response.status_code == 200:
             data = response.json()
-            location = data.get('records', {}).get('location', [])
-            if location:
-                weather_elements = location[0].get('weatherElement', [])
-                wx_data = None
-                temp_data = None
-                for elem in weather_elements:
-                    if elem.get('elementName') == 'Wx':
-                        wx_data = elem.get('time', [])[0].get('parameter', {}).get('parameterName', '')
-                    if elem.get('elementName') == 'T':
-                        temp_data = elem.get('time', [])[0].get('parameter', {}).get('parameterName', '')
-                
-                wx_map = {"晴": "☀️晴", "多雲": "⛅多雲", "陰": "☁️陰", "雨": "🌧️雨", "雷雨": "⛈️雷雨", "霧": "🌫️霧"}
-                wx_display = wx_map.get(wx_data, wx_data) if wx_data else "🌡️"
-                temp_display = f"{temp_data}°C" if temp_data else "?"
-                return f"{wx_display} {temp_display}"
-    except Exception as e:
-        print(f"中央氣象署 API 錯誤: {e}")
-    
+            temp = data['current_weather']['temperature']
+            code = data['current_weather']['weathercode']
+            weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
+            weather = weather_codes.get(code, "🌡️")
+            return f"{weather} {int(temp)}°C"
+    except:
+        pass
     return "未知"
-
-def get_weather_by_coords(lat, lon):
-    """根據經緯度取得天氣（先反查縣市，再用中央氣象署 API）"""
-    try:
-        # 先用經緯度反查縣市
-        city = get_city_from_coords(lat, lon)
-        if city:
-            for key, value in CITY_MAPPING.items():
-                if key in city or city in key:
-                    return get_weather_taiwan_city(value)
-        return get_weather_taiwan_city("臺北市")
-    except:
-        return "未知"
-
-def get_city_from_coords(lat, lon):
-    try:
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&accept-language=zh-TW"
-        r = requests.get(url, headers={'User-Agent': 'LineBot/1.0'}, timeout=5)
-        data = r.json()
-        city = data.get('address', {}).get('city', '') or data.get('address', {}).get('town', '') or data.get('address', {}).get('county', '')
-        return city if city else None
-    except:
-        return None
 
 # ========== 6個常駐按鈕選單 ==========
 def get_main_quick_reply():
