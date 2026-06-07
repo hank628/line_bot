@@ -55,7 +55,7 @@ def init_db():
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         
-        # 英文單字表（無例句）
+        # 英文單字表
         c.execute('''CREATE TABLE vocabulary (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             word TEXT UNIQUE,
@@ -179,7 +179,7 @@ def init_db():
 
 init_db()
 
-# ========== 5個常駐按鈕選單（移除天氣）==========
+# ========== 5個常駐按鈕選單 ==========
 def get_main_quick_reply():
     return QuickReply(
         items=[
@@ -394,7 +394,9 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
+    # ========== 統計 ==========
     elif msg_lower in ["統計", "statistics"]:
+        session['stats_current_page'] = 1
         data, total = get_stats_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -407,7 +409,9 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
     
+    # ========== 社會學 ==========
     elif msg_lower in ["社會學", "sociology"]:
+        session['socio_current_page'] = 1
         data, total = get_socio_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -420,7 +424,9 @@ def handle_message(event):
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
     
+    # ========== 探索教育 ==========
     elif msg_lower in ["探索", "outdoor"]:
+        session['outdoor_current_page'] = 1
         data, total = get_outdoor_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -433,78 +439,106 @@ def handle_message(event):
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_main_quick_reply())
     
-    elif msg_lower.startswith("統計下一頁") or msg_lower.startswith("統計上一頁"):
-        page = 1
-        if "下一頁" in msg_lower:
-            page = 2
-        elif "上一頁" in msg_lower:
-            page = 0
-        data, total = get_stats_list(page)
+    # ========== 統計分頁（修正版）==========
+    elif msg_lower == "統計下一頁":
+        current_page = session.get('stats_current_page', 1)
+        new_page = current_page + 1
+        data, total = get_stats_list(new_page)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        if page < 1:
-            page = 1
-            data, total = get_stats_list(page)
-        elif page > total_pages:
-            page = total_pages
-            data, total = get_stats_list(page)
         
-        if data:
-            text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
+        if new_page <= total_pages and data:
+            session['stats_current_page'] = new_page
+            text = f"📊 統計專有名詞 (第{new_page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「統計 數字」或「se數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「統計 數字」或「se數字」查詳細\n💡 換頁：輸入「統計下一頁」或「統計上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text=f"📊 已是最後一頁（共{total_pages}頁）", quick_reply=get_main_quick_reply())
     
-    elif msg_lower.startswith("社會學下一頁") or msg_lower.startswith("社會學上一頁"):
-        page = 1
-        if "下一頁" in msg_lower:
-            page = 2
-        elif "上一頁" in msg_lower:
-            page = 0
-        data, total = get_socio_list(page)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        if page < 1:
-            page = 1
-            data, total = get_socio_list(page)
-        elif page > total_pages:
-            page = total_pages
-            data, total = get_socio_list(page)
+    elif msg_lower == "統計上一頁":
+        current_page = session.get('stats_current_page', 1)
+        new_page = current_page - 1
         
-        if data:
-            text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
+        if new_page >= 1:
+            data, total = get_stats_list(new_page)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            session['stats_current_page'] = new_page
+            text = f"📊 統計專有名詞 (第{new_page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「社會學 數字」或「ss數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「統計 數字」或「se數字」查詳細\n💡 換頁：輸入「統計下一頁」或「統計上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="📊 已是第一頁", quick_reply=get_main_quick_reply())
     
-    elif msg_lower.startswith("探索下一頁") or msg_lower.startswith("探索上一頁"):
-        page = 1
-        if "下一頁" in msg_lower:
-            page = 2
-        elif "上一頁" in msg_lower:
-            page = 0
-        data, total = get_outdoor_list(page)
+    # ========== 社會學分頁（修正版）==========
+    elif msg_lower == "社會學下一頁":
+        current_page = session.get('socio_current_page', 1)
+        new_page = current_page + 1
+        data, total = get_socio_list(new_page)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        if page < 1:
-            page = 1
-            data, total = get_outdoor_list(page)
-        elif page > total_pages:
-            page = total_pages
-            data, total = get_outdoor_list(page)
         
-        if data:
-            text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
+        if new_page <= total_pages and data:
+            session['socio_current_page'] = new_page
+            text = f"⚽ 運動社會學 (第{new_page}頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 查詢方式：輸入「探索 數字」或「ae數字」查詳細"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」或「ss數字」查詳細\n💡 換頁：輸入「社會學下一頁」或「社會學上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text=f"⚽ 已是最後一頁（共{total_pages}頁）", quick_reply=get_main_quick_reply())
     
+    elif msg_lower == "社會學上一頁":
+        current_page = session.get('socio_current_page', 1)
+        new_page = current_page - 1
+        
+        if new_page >= 1:
+            data, total = get_socio_list(new_page)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            session['socio_current_page'] = new_page
+            text = f"⚽ 運動社會學 (第{new_page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」或「ss數字」查詳細\n💡 換頁：輸入「社會學下一頁」或「社會學上一頁」"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text="⚽ 已是第一頁", quick_reply=get_main_quick_reply())
+    
+    # ========== 探索教育分頁（修正版）==========
+    elif msg_lower == "探索下一頁":
+        current_page = session.get('outdoor_current_page', 1)
+        new_page = current_page + 1
+        data, total = get_outdoor_list(new_page)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        
+        if new_page <= total_pages and data:
+            session['outdoor_current_page'] = new_page
+            text = f"🏕️ 探索教育 (第{new_page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「探索 數字」或「ae數字」查詳細\n💡 換頁：輸入「探索下一頁」或「探索上一頁」"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text=f"🏕️ 已是最後一頁（共{total_pages}頁）", quick_reply=get_main_quick_reply())
+    
+    elif msg_lower == "探索上一頁":
+        current_page = session.get('outdoor_current_page', 1)
+        new_page = current_page - 1
+        
+        if new_page >= 1:
+            data, total = get_outdoor_list(new_page)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            session['outdoor_current_page'] = new_page
+            text = f"🏕️ 探索教育 (第{new_page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「探索 數字」或「ae數字」查詳細\n💡 換頁：輸入「探索下一頁」或「探索上一頁」"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text="🏕️ 已是第一頁", quick_reply=get_main_quick_reply())
+    
+    # ========== 快捷指令 ==========
     elif msg_lower.startswith("se") and len(msg_lower) > 2 and msg_lower[2:].isdigit():
         num = int(msg_lower[2:])
         detail = get_stats_by_id(num)
@@ -810,14 +844,12 @@ def admin_import_csv(table_type):
     reader = csv.reader(io.StringIO(content))
     headers = next(reader, None)
     
-    success_count = 0
     for row in reader:
         if len(row) >= len(columns):
             values = row[:len(columns)]
             placeholders = ','.join(['?' for _ in values])
             try:
                 c.execute(f"INSERT INTO {info['table']} ({','.join(columns)}) VALUES ({placeholders})", values)
-                success_count += 1
             except Exception as e:
                 print(f"匯入錯誤: {e}")
     
