@@ -22,7 +22,7 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
-TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "")
+TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "U73f9f05de00c8a9e3f8e407515f04326")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -35,7 +35,6 @@ def init_db():
     import os
     db_path = 'course_bot.db'
     
-    # 檢查是否需要重建
     need_rebuild = False
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -54,7 +53,6 @@ def init_db():
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         
-        # 建立所有資料表
         c.execute('''CREATE TABLE vocabulary (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             word TEXT UNIQUE,
@@ -163,7 +161,6 @@ def init_db():
         
         conn.commit()
         
-        # 驗證
         c.execute("SELECT COUNT(*) FROM vocabulary")
         print(f"📖 英文單字筆數: {c.fetchone()[0]}")
         c.execute("SELECT COUNT(*) FROM glossary_stats")
@@ -289,11 +286,43 @@ def push_todos():
     tz = pytz.timezone('Asia/Taipei')
     now = datetime.now(tz)
     today_str = now.strftime('%Y-%m-%d')
+    now_time = now.strftime('%H:%M')
     
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     
-    # 學生個人待辦推播（早上7點和晚上9點）
+    # 1. 老師個人待辦推播
+    if TEACHER_USER_ID:
+        c.execute("SELECT id, task FROM teacher_todos WHERE todo_date <= ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
+        teacher_todos = c.fetchall()
+        for tid, task in teacher_todos:
+            try:
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.push_message(PushMessageRequest(to=TEACHER_USER_ID, messages=[TextMessage(text=f"👨‍🏫 老師待辦提醒：{task}")]))
+                c.execute("UPDATE teacher_todos SET status = 'done' WHERE id = ?", (tid,))
+            except Exception as e:
+                print(f"老師待辦推播失敗: {e}")
+    
+    # 2. 全班共同待辦推播
+    c.execute("SELECT id, task FROM class_todos WHERE todo_date <= ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
+    class_todos = c.fetchall()
+    
+    if class_todos:
+        c.execute("SELECT user_id FROM users")
+        users = [row[0] for row in c.fetchall()]
+        for user_id in users:
+            for tid, task in class_todos:
+                try:
+                    with ApiClient(configuration) as api_client:
+                        line_bot_api = MessagingApi(api_client)
+                        line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[TextMessage(text=f"📢 全班公告：{task}")]))
+                except Exception as e:
+                    print(f"推播失敗 {user_id}: {e}")
+        for tid, task in class_todos:
+            c.execute("UPDATE class_todos SET status = 'done' WHERE id = ?", (tid,))
+    
+    # 3. 學生個人待辦推播（早上7點和晚上9點）
     if now.hour == 7:
         title = "🌅 早安！今天的待辦事項："
         date_str = today_str
@@ -301,6 +330,7 @@ def push_todos():
         title = "🌙 晚安！明天的待辦事項："
         date_str = (now + timedelta(days=1)).strftime('%Y-%m-%d')
     else:
+        conn.commit()
         conn.close()
         return
     
@@ -322,12 +352,12 @@ def push_todos():
         except Exception as e:
             print(f"推播失敗 {user_id}: {e}")
     
+    conn.commit()
     conn.close()
 
 # ========== 啟動排程 ==========
 scheduler = BackgroundScheduler(timezone='Asia/Taipei')
-scheduler.add_job(push_todos, CronTrigger(hour=7, minute=0))
-scheduler.add_job(push_todos, CronTrigger(hour=21, minute=0))
+scheduler.add_job(push_todos, CronTrigger(minute='*'))
 scheduler.start()
 
 # ========== LINE Bot 路由 ==========
@@ -421,7 +451,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
-    # 統計
+    # ========== 統計 ==========
     elif msg_lower in ["統計", "statistics"]:
         session['current_subject'] = 'stats'
         session['stats_page'] = 1
@@ -437,7 +467,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
     
-    # 社會學
+    # ========== 社會學 ==========
     elif msg_lower in ["社會學", "sociology"]:
         session['current_subject'] = 'socio'
         session['socio_page'] = 1
@@ -453,7 +483,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
     
-    # 探索教育
+    # ========== 探索教育 ==========
     elif msg_lower in ["探索", "outdoor"]:
         session['current_subject'] = 'outdoor'
         session['outdoor_page'] = 1
@@ -469,7 +499,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_main_quick_reply())
     
-    # 分頁處理
+    # ========== 分頁處理 ==========
     elif msg_lower in ["下一頁", "上一頁"]:
         current_subject = session.get('current_subject', '')
         
@@ -486,6 +516,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_stats_list(page)
             session['stats_page'] = page
+            session['current_subject'] = 'stats'  # 確保科目不遺失
             
             if data:
                 text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
@@ -509,6 +540,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_socio_list(page)
             session['socio_page'] = page
+            session['current_subject'] = 'socio'  # 確保科目不遺失
             
             if data:
                 text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
@@ -532,6 +564,7 @@ def handle_message(event):
                 page = total_pages
                 data, total = get_outdoor_list(page)
             session['outdoor_page'] = page
+            session['current_subject'] = 'outdoor'  # 確保科目不遺失
             
             if data:
                 text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
@@ -544,7 +577,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
     
-    # 數字查詢
+    # ========== 數字查詢（修正版 - 直接從 session 讀取 current_subject）==========
     elif msg_lower.isdigit():
         num = int(msg_lower)
         current_subject = session.get('current_subject', '')
@@ -594,9 +627,9 @@ def handle_message(event):
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         
         else:
-            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）\n\n例如：輸入「統計」後再輸入數字", quick_reply=get_main_quick_reply())
     
-    # 待辦事項
+    # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
         task = msg[3:]
         todo_date = datetime.now().strftime('%Y-%m-%d')
@@ -663,9 +696,8 @@ def handle_message(event):
     
     # 取得我的 User ID
     elif "取得我的id" in msg_lower or "取得id" in msg_lower:
-        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到 Render 環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n已設定為老師 ID", quick_reply=get_main_quick_reply())
     
-    # 預設回應
     else:
         reply = TextMessage(
             text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育\n• 新增 買牛奶 - 待辦\n• 取得我的ID - 獲取使用者ID",
@@ -776,7 +808,6 @@ def admin_delete(table_type, id):
     conn.close()
     return redirect(f'/admin/{table_type}')
 
-# ========== 學生待辦查看 ==========
 @app.route('/admin/student_todos')
 @login_required
 def admin_student_todos():
@@ -860,7 +891,7 @@ TABLE_TEMPLATE = '''
     <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
         <tr><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
         {% for row in rows %}
-        <td>
+        <tr>
             <form method="post" action="/admin/edit/{{ table_type }}/{{ row[0] }}">
                 <td>{{ row[0] }}</td>
                 {% for i in range(info.columns|length) %}
