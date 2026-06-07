@@ -1,4 +1,4 @@
-from flask import Flask, request, abort, render_template_string, redirect, session, jsonify
+from flask import Flask, request, abort, render_template_string, redirect, session
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -11,7 +11,6 @@ import os
 import sqlite3
 import requests
 import random
-import re
 from datetime import datetime, timedelta
 from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -30,7 +29,7 @@ app.secret_key = SECRET_KEY
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# ========== 初始化資料庫（完全修正版）==========
+# ========== 初始化資料庫 ==========
 def init_db():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
@@ -44,7 +43,7 @@ def init_db():
     )''')
     
     # 統計專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS statistics_glossary (
+    c.execute('''CREATE TABLE IF NOT EXISTS glossary_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -54,7 +53,7 @@ def init_db():
     )''')
     
     # 運動社會學專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS sociology_glossary (
+    c.execute('''CREATE TABLE IF NOT EXISTS glossary_socio (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -63,7 +62,7 @@ def init_db():
     )''')
     
     # 探索教育專有名詞表
-    c.execute('''CREATE TABLE IF NOT EXISTS outdoor_glossary (
+    c.execute('''CREATE TABLE IF NOT EXISTS glossary_outdoor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
         translation TEXT,
@@ -87,57 +86,68 @@ def init_db():
         created_at TEXT
     )''')
     
-    # 預設英文單字
+    # ========== 檢查並插入預設資料 ==========
+    
+    # 英文單字
     c.execute("SELECT COUNT(*) FROM vocabulary")
     if c.fetchone()[0] == 0:
         default_vocab = [
-            ("apple", "蘋果 🍎", "I eat an apple every day."),
-            ("book", "書 📚", "This is a good book."),
-            ("statistics", "統計學 📊", "Statistics is important for research."),
-            ("sociology", "社會學 👥", "Sociology studies human society."),
-            ("outdoor", "戶外探索 🏕️", "Outdoor education is fun."),
+            ("apple", "蘋果", "I eat an apple."),
+            ("book", "書", "This is a book."),
+            ("t-test", "t檢定", "比較兩組平均數"),
+            ("ANOVA", "變異數分析", "比較多組平均數"),
         ]
         c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
+        print("✅ 已新增預設英文單字")
     
-    # 預設統計名詞
-    c.execute("SELECT COUNT(*) FROM statistics_glossary")
+    # 統計
+    c.execute("SELECT COUNT(*) FROM glossary_stats")
     if c.fetchone()[0] == 0:
         default_stats = [
-            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異的統計方法", "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
+            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
             ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", "from scipy import stats\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
-            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", "from sklearn.linear_model import LinearRegression\nmodel = LinearRegression()\nmodel.fit(X, y)", 1),
-            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", "from scipy import stats\nchi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)", 0),
-            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", "if p_value < 0.05:\n    print('統計顯著')", 1),
+            ("correlation", "相關分析", "探討兩個變數之間的線性關係", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
+            ("regression", "迴歸分析", "建立預測模型", "from sklearn.linear_model import LinearRegression", 1),
         ]
-        c.executemany("INSERT INTO statistics_glossary (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
+        c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
+        print("✅ 已新增預設統計資料")
     
-    # 預設社會學名詞
-    c.execute("SELECT COUNT(*) FROM sociology_glossary")
+    # 社會學
+    c.execute("SELECT COUNT(*) FROM glossary_socio")
     if c.fetchone()[0] == 0:
         default_socio = [
-            ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
-            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
-            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
-            ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
-            ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
-            ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
+            ("sports socialization", "運動社會化", "透過運動學習社會規範的過程", 1),
+            ("social stratification", "社會階層化", "社會資源分配不均的現象", 1),
+            ("gender ideology", "性別意識形態", "社會對性別角色的期待", 1),
+            ("sports fan", "運動迷", "對運動有強烈認同的人", 1),
         ]
-        c.executemany("INSERT INTO sociology_glossary (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
+        c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
+        print("✅ 已新增預設社會學資料")
     
-    # 預設探索教育名詞
-    c.execute("SELECT COUNT(*) FROM outdoor_glossary")
+    # 探索教育
+    c.execute("SELECT COUNT(*) FROM glossary_outdoor")
     if c.fetchone()[0] == 0:
         default_outdoor = [
-            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
-            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
-            ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾", 1),
-            ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
-            ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
+            ("experiential learning", "體驗式學習", "從經驗中學習的循環過程", 1),
+            ("challenge by choice", "自願挑戰", "可自行決定參與程度", 1),
+            ("debriefing", "反思回饋", "活動後的引導討論", 1),
         ]
-        c.executemany("INSERT INTO outdoor_glossary (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
+        c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
+        print("✅ 已新增預設探索教育資料")
     
     conn.commit()
+    
+    # 驗證資料是否成功插入
+    c.execute("SELECT COUNT(*) FROM glossary_stats")
+    stats_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM glossary_socio")
+    socio_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM glossary_outdoor")
+    outdoor_count = c.fetchone()[0]
+    print(f"📊 統計資料筆數: {stats_count}")
+    print(f"⚽ 社會學資料筆數: {socio_count}")
+    print(f"🏕️ 探索教育資料筆數: {outdoor_count}")
+    
     conn.close()
 
 init_db()
@@ -157,59 +167,30 @@ def get_course_quick_reply():
     return QuickReply(
         items=[
             QuickReplyItem(action=MessageAction(label="📊統計", text="統計")),
-            QuickReplyItem(action=MessageAction(label="⚽社會", text="運動社會學")),
-            QuickReplyItem(action=MessageAction(label="🏕️探索", text="探索教育")),
+            QuickReplyItem(action=MessageAction(label="⚽社會", text="社會學")),
+            QuickReplyItem(action=MessageAction(label="🏕️探索", text="探索")),
             QuickReplyItem(action=MessageAction(label="◀️回主選單", text="幫助")),
         ]
     )
 
-# ========== 天氣函數（台灣天氣 + 攝氏）==========
-def get_weather_taiwan(city_name="Taipei"):
-    """使用中央氣象局開放資料（免費，免API Key）"""
-    try:
-        # 使用 wttr.in 並指定台灣城市
-        url = f"https://wttr.in/{city_name}?format=%C+%t&lang=zh&u"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200 and response.text.strip():
-            weather_text = response.text.strip()
-            # 確保溫度是攝氏（wttr.in 的 %t 就是攝氏）
-            return weather_text
-    except:
-        pass
-    
-    # 備用方案：根據經緯度查詢
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude=23.5&longitude=121.0&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            temp = data['current_weather']['temperature']
-            code = data['current_weather']['weathercode']
-            weather_codes = {0: "晴天", 1: "晴時多雲", 2: "多雲", 3: "陰天", 61: "下雨", 95: "雷雨"}
-            weather = weather_codes.get(code, "未知")
-            return f"{weather}，{temp}°C"
-    except:
-        pass
-    
-    return "晴天，24-28°C"
-
-def get_weather_by_coords(lat, lon):
-    """根據經緯度取得天氣（攝氏）"""
+# ========== 天氣函數 ==========
+def get_weather_celsius(lat, lon):
+    """取得攝氏天氣"""
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=8)
         if response.status_code == 200:
             data = response.json()
             temp = data['current_weather']['temperature']
             code = data['current_weather']['weathercode']
             weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
             weather = weather_codes.get(code, "🌡️")
-            return f"{weather} {temp}°C"
+            return f"{weather} {int(temp)}°C"
     except:
         pass
     return "晴天 24°C"
 
-def get_city_from_coords(lat, lon):
+def get_city_name(lat, lon):
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&accept-language=zh-TW"
         r = requests.get(url, headers={'User-Agent': 'LineBot/1.0'}, timeout=5)
@@ -220,100 +201,53 @@ def get_city_from_coords(lat, lon):
         return "您的位置"
 
 # ========== 課程查詢函數 ==========
-PAGE_SIZE = 10
-
-# 統計（有 code）
-def get_stats_data(page, show_starred_only=False):
+def get_stats_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    offset = (page - 1) * PAGE_SIZE
-    if show_starred_only:
-        c.execute("SELECT id, term, translation, definition, code FROM statistics_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM statistics_glossary WHERE is_starred = 1").fetchone()[0]
-    else:
-        c.execute("SELECT id, term, translation, definition, code FROM statistics_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM statistics_glossary").fetchone()[0]
-    data = c.fetchall()
-    conn.close()
-    return data, total
-
-def get_stats_detail(id):
-    conn = sqlite3.connect('course_bot.db')
-    c = conn.cursor()
-    c.execute("SELECT term, translation, definition, code FROM statistics_glossary WHERE id = ?", (id,))
-    result = c.fetchone()
-    conn.close()
-    return result
-
-def search_stats(keyword):
-    conn = sqlite3.connect('course_bot.db')
-    c = conn.cursor()
-    c.execute("SELECT id, term, translation, definition, code FROM statistics_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    c.execute("SELECT id, term, translation FROM glossary_stats ORDER BY term")
     results = c.fetchall()
     conn.close()
     return results
 
-# 社會學（無 code）
-def get_sociology_data(page, show_starred_only=False):
+def get_stats_detail(term_id):
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    offset = (page - 1) * PAGE_SIZE
-    if show_starred_only:
-        c.execute("SELECT id, term, translation, definition FROM sociology_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM sociology_glossary WHERE is_starred = 1").fetchone()[0]
-    else:
-        c.execute("SELECT id, term, translation, definition FROM sociology_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM sociology_glossary").fetchone()[0]
-    data = c.fetchall()
-    conn.close()
-    return data, total
-
-def get_sociology_detail(id):
-    conn = sqlite3.connect('course_bot.db')
-    c = conn.cursor()
-    c.execute("SELECT term, translation, definition FROM sociology_glossary WHERE id = ?", (id,))
+    c.execute("SELECT term, translation, definition, code FROM glossary_stats WHERE id = ?", (term_id,))
     result = c.fetchone()
     conn.close()
     return result
 
-def search_sociology(keyword):
+def get_socio_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation, definition FROM sociology_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    c.execute("SELECT id, term, translation FROM glossary_socio ORDER BY term")
     results = c.fetchall()
     conn.close()
     return results
 
-# 探索教育（無 code）
-def get_outdoor_data(page, show_starred_only=False):
+def get_socio_detail(term_id):
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    offset = (page - 1) * PAGE_SIZE
-    if show_starred_only:
-        c.execute("SELECT id, term, translation, definition FROM outdoor_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM outdoor_glossary WHERE is_starred = 1").fetchone()[0]
-    else:
-        c.execute("SELECT id, term, translation, definition FROM outdoor_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute("SELECT COUNT(*) FROM outdoor_glossary").fetchone()[0]
-    data = c.fetchall()
-    conn.close()
-    return data, total
-
-def get_outdoor_detail(id):
-    conn = sqlite3.connect('course_bot.db')
-    c = conn.cursor()
-    c.execute("SELECT term, translation, definition FROM outdoor_glossary WHERE id = ?", (id,))
+    c.execute("SELECT term, translation, definition FROM glossary_socio WHERE id = ?", (term_id,))
     result = c.fetchone()
     conn.close()
     return result
 
-def search_outdoor(keyword):
+def get_outdoor_list():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation, definition FROM outdoor_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    c.execute("SELECT id, term, translation FROM glossary_outdoor ORDER BY term")
     results = c.fetchall()
     conn.close()
     return results
+
+def get_outdoor_detail(term_id):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT term, translation, definition FROM glossary_outdoor WHERE id = ?", (term_id,))
+    result = c.fetchone()
+    conn.close()
+    return result
 
 # ========== 待辦推播 ==========
 def push_todos():
@@ -344,7 +278,7 @@ def push_todos():
         
         if todos:
             todo_list = "\n".join([f"{i+1}. {task}" for i, (_, task) in enumerate(todos)])
-            message = f"{title}\n\n{todo_list}\n\n💡 完成請輸入「完成 編號」"
+            message = f"{title}\n\n{todo_list}"
         else:
             message = f"{title}\n\n📋 目前沒有待辦事項"
         
@@ -353,7 +287,7 @@ def push_todos():
                 line_bot_api = MessagingApi(api_client)
                 line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[TextMessage(text=message)]))
         except Exception as e:
-            print(f"推播失敗 {user_id}: {e}")
+            print(f"推播失敗: {e}")
 
 # ========== 啟動排程 ==========
 scheduler = BackgroundScheduler(timezone='Asia/Taipei')
@@ -386,7 +320,7 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 下方按鈕可直接點選：\n• 🌤️天氣 - 查詢天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 三種課程專有名詞\n• ✅待辦 - 管理待辦事項"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 選擇科目\n• ✅待辦 - 管理待辦"
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -401,8 +335,8 @@ def handle_follow(event):
 def handle_location(event):
     lat = event.message.latitude
     lon = event.message.longitude
-    city = get_city_from_coords(lat, lon)
-    weather = get_weather_by_coords(lat, lon)
+    city = get_city_name(lat, lon)
+    weather = get_weather_celsius(lat, lon)
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -429,7 +363,7 @@ def handle_message(event):
     
     # ========== 主選單 ==========
     if msg_lower in ["幫助", "選單", "menu", "help"]:
-        reply = TextMessage(text="🤖 HANK EduMentor\n\n📌 點擊下方按鈕使用功能：", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text="🤖 請點擊下方按鈕：", quick_reply=get_main_quick_reply())
     
     # ========== 課程選單 ==========
     elif msg_lower in ["課程", "course"]:
@@ -437,10 +371,8 @@ def handle_message(event):
     
     # ========== 天氣 ==========
     elif msg_lower in ["天氣", "weather"]:
-        # 先取得預設天氣（台北）
-        default_weather = get_weather_taiwan("Taipei")
         reply = TextMessage(
-            text=f"🌤️ 台北天氣：{default_weather}\n\n📍 想要更精確的天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置\n\n收到位置後會顯示當地天氣！",
+            text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置",
             quick_reply=get_main_quick_reply()
         )
     
@@ -457,232 +389,125 @@ def handle_message(event):
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
     # ========== 統計 ==========
-    elif msg_lower in ["統計", "實驗設計與統計", "statistics"]:
-        session['current_subject'] = 'statistics'
-        session['stats_page'] = 1
-        session['stats_mode'] = 'all'
-        data, total = get_stats_data(1, False)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        
-        if data:
-            text = f"📊 實驗設計與統計 (第1頁/共{total_pages}頁)\n\n"
-            for i, row in enumerate(data, 1):
-                star = "⭐ " if i <= 4 else ""  # 前4個是核心
-                text += f"{i}. {star}{row[1]} - {row[2]}\n"
-            text += f"\n💡 輸入數字查詳細，輸入「下一頁」換頁，輸入「查 [關鍵字]」搜尋"
+    elif msg_lower in ["統計", "statistics"]:
+        stats_list = get_stats_list()
+        if stats_list:
+            text = "📊 統計專有名詞\n\n"
+            for i, (sid, term, trans) in enumerate(stats_list, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += "\n💡 輸入「查 編號」或「查 t-test」查詳細"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
-            reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="📊 暫無統計資料\n\n請在管理後台新增", quick_reply=get_course_quick_reply())
     
-    # ========== 運動社會學 ==========
-    elif msg_lower in ["運動社會學", "社會學", "sociology"]:
-        session['current_subject'] = 'sociology'
-        session['socio_page'] = 1
-        session['socio_mode'] = 'starred'
-        data, total = get_sociology_data(1, True)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        
-        if data:
-            text = f"⚽ 運動社會學核心名詞 (第1頁/共{total_pages}頁)\n\n"
-            for i, row in enumerate(data, 1):
-                text += f"{i}. {row[1]} - {row[2]}\n"
-            text += f"\n💡 輸入數字查詳細，輸入「全部」看所有名詞，輸入「查 [關鍵字]」搜尋"
+    # ========== 社會學 ==========
+    elif msg_lower in ["社會學", "sociology"]:
+        socio_list = get_socio_list()
+        if socio_list:
+            text = "⚽ 運動社會學專有名詞\n\n"
+            for i, (sid, term, trans) in enumerate(socio_list, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += "\n💡 輸入「查 編號」查詳細"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
-            reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_course_quick_reply())
-    
-    elif msg_lower == "全部" and session.get('current_subject') == 'sociology':
-        session['socio_mode'] = 'all'
-        session['socio_page'] = 1
-        data, total = get_sociology_data(1, False)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        
-        text = f"⚽ 運動社會學全部名詞 (第1頁/共{total_pages}頁)\n\n"
-        for i, row in enumerate(data, 1):
-            star = "⭐ " if row[3] else ""
-            text += f"{i}. {star}{row[1]} - {row[2]}\n"
-        text += f"\n💡 輸入數字查詳細，輸入「核心」看精選"
-        reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-    
-    elif msg_lower == "核心" and session.get('current_subject') == 'sociology':
-        session['socio_mode'] = 'starred'
-        session['socio_page'] = 1
-        data, total = get_sociology_data(1, True)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        
-        text = f"⚽ 運動社會學核心名詞 (第1頁/共{total_pages}頁)\n\n"
-        for i, row in enumerate(data, 1):
-            text += f"{i}. {row[1]} - {row[2]}\n"
-        text += f"\n💡 輸入數字查詳細"
-        reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="⚽ 暫無社會學資料\n\n請在管理後台新增", quick_reply=get_course_quick_reply())
     
     # ========== 探索教育 ==========
-    elif msg_lower in ["探索教育", "探索", "outdoor"]:
-        session['current_subject'] = 'outdoor'
-        session['outdoor_page'] = 1
-        session['outdoor_mode'] = 'all'
-        data, total = get_outdoor_data(1, False)
-        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-        
-        if data:
-            text = f"🏕️ 探索教育 (第1頁/共{total_pages}頁)\n\n"
-            for i, row in enumerate(data, 1):
-                star = "⭐ " if i <= 3 else ""
-                text += f"{i}. {star}{row[1]} - {row[2]}\n"
-            text += f"\n💡 輸入數字查詳細，輸入「下一頁」換頁，輸入「查 [關鍵字]」搜尋"
+    elif msg_lower in ["探索", "outdoor"]:
+        outdoor_list = get_outdoor_list()
+        if outdoor_list:
+            text = "🏕️ 探索教育專有名詞\n\n"
+            for i, (oid, term, trans) in enumerate(outdoor_list, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += "\n💡 輸入「查 編號」查詳細"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
-            reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="🏕️ 暫無探索教育資料\n\n請在管理後台新增", quick_reply=get_course_quick_reply())
     
-    # ========== 分頁處理 ==========
-    elif msg_lower in ["下一頁", "上一頁"]:
-        subject = session.get('current_subject', '')
-        
-        if subject == 'statistics':
-            page = session.get('stats_page', 1)
-            mode = session.get('stats_mode', 'all')
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
-            data, total = get_stats_data(page, mode == 'starred')
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages:
-                page = total_pages
-                data, total = get_stats_data(page, mode == 'starred')
-            session['stats_page'] = page
-            
-            if data:
-                text = f"📊 實驗設計與統計 (第{page}頁/共{total_pages}頁)\n\n"
-                for i, row in enumerate(data, 1):
-                    text += f"{i}. {row[1]} - {row[2]}\n"
-                text += f"\n💡 輸入數字查詳細"
-                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-            else:
-                reply = TextMessage(text="📊 暫無資料", quick_reply=get_course_quick_reply())
-        
-        elif subject == 'outdoor':
-            page = session.get('outdoor_page', 1)
-            mode = session.get('outdoor_mode', 'all')
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
-            data, total = get_outdoor_data(page, mode == 'starred')
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages:
-                page = total_pages
-                data, total = get_outdoor_data(page, mode == 'starred')
-            session['outdoor_page'] = page
-            
-            text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
-            for i, row in enumerate(data, 1):
-                text += f"{i}. {row[1]} - {row[2]}\n"
-            text += f"\n💡 輸入數字查詳細"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-        else:
-            reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
-    
-    # ========== 數字查詢 ==========
-    elif msg_lower.isdigit():
-        num = int(msg_lower)
-        subject = session.get('current_subject', '')
-        
-        if subject == 'statistics':
-            page = session.get('stats_page', 1)
-            mode = session.get('stats_mode', 'all')
-            data, total = get_stats_data(page, mode == 'starred')
-            if 1 <= num <= len(data):
-                row = data[num-1]
-                detail = get_stats_detail(row[0])
-                if detail:
-                    term, trans, definition, code = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    if code:
-                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
-            else:
-                reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
-        
-        elif subject == 'sociology':
-            page = session.get('socio_page', 1)
-            mode = session.get('socio_mode', 'starred')
-            data, total = get_sociology_data(page, mode == 'starred')
-            if 1 <= num <= len(data):
-                row = data[num-1]
-                detail = get_sociology_detail(row[0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
-            else:
-                reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
-        
-        elif subject == 'outdoor':
-            page = session.get('outdoor_page', 1)
-            mode = session.get('outdoor_mode', 'all')
-            data, total = get_outdoor_data(page, mode == 'starred')
-            if 1 <= num <= len(data):
-                row = data[num-1]
-                detail = get_outdoor_detail(row[0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
-            else:
-                reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
-        else:
-            reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
-    
-    # ========== 關鍵字查詢 ==========
+    # ========== 查詢詳細（數字或關鍵字）==========
     elif msg_lower.startswith("查 "):
         keyword = msg_lower[3:]
+        
+        # 嘗試按數字查詢
+        if keyword.isdigit():
+            num = int(keyword)
+            # 先從當前選擇的科目判斷
+            pass
+        
+        # 搜尋統計
+        conn = sqlite3.connect('course_bot.db')
+        c = conn.cursor()
+        c.execute("SELECT id, term, translation, definition, code FROM glossary_stats WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+        result = c.fetchone()
+        if result:
+            term, trans, definition, code = result[1], result[2], result[3], result[4]
+            text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+            if code:
+                text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            conn.close()
+        else:
+            # 搜尋社會學
+            c.execute("SELECT term, translation, definition FROM glossary_socio WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+            result = c.fetchone()
+            if result:
+                term, trans, definition = result
+                text = f"📖 **{term}** (社會學)\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                conn.close()
+            else:
+                # 搜尋探索教育
+                c.execute("SELECT term, translation, definition FROM glossary_outdoor WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+                result = c.fetchone()
+                if result:
+                    term, trans, definition = result
+                    text = f"📖 **{term}** (探索教育)\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                else:
+                    reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_course_quick_reply())
+            conn.close()
+    
+    # ========== 數字直接查詢（從列表選項）==========
+    elif msg_lower.isdigit():
+        num = int(msg_lower)
         found = False
         
-        # 查統計
-        results = search_stats(keyword)
-        if results:
-            for row in results:
-                term, trans, definition, code = row[1], row[2], row[3], row[4]
-                text = f"📖 **{term}** (統計)\n🀄️ {trans}\n📝 {definition}"
+        # 先嘗試從統計查
+        stats_list = get_stats_list()
+        if 1 <= num <= len(stats_list):
+            detail = get_stats_detail(stats_list[num-1][0])
+            if detail:
+                term, trans, definition, code = detail
+                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
                 if code:
                     text += f"\n\n💻 程式碼：\n```\n{code}\n```"
                 reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
                 found = True
-                break
         
-        # 查社會學
+        # 再嘗試從社會學查
         if not found:
-            results = search_sociology(keyword)
-            if results:
-                for row in results:
-                    term, trans, definition = row[1], row[2], row[3]
+            socio_list = get_socio_list()
+            if 1 <= num <= len(socio_list):
+                detail = get_socio_detail(socio_list[num-1][0])
+                if detail:
+                    term, trans, definition = detail
                     text = f"📖 **{term}** (社會學)\n🀄️ {trans}\n📝 {definition}"
                     reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
                     found = True
-                    break
         
-        # 查探索教育
+        # 再嘗試從探索教育查
         if not found:
-            results = search_outdoor(keyword)
-            if results:
-                for row in results:
-                    term, trans, definition = row[1], row[2], row[3]
+            outdoor_list = get_outdoor_list()
+            if 1 <= num <= len(outdoor_list):
+                detail = get_outdoor_detail(outdoor_list[num-1][0])
+                if detail:
+                    term, trans, definition = detail
                     text = f"📖 **{term}** (探索教育)\n🀄️ {trans}\n📝 {definition}"
                     reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
                     found = True
-                    break
         
         if not found:
-            reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
     
     # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
@@ -694,12 +519,12 @@ def handle_message(event):
                   (user_id, task, todo_date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
-        reply = TextMessage(text=f"✅ 已新增：{task}\n📅 日期：{todo_date}", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=f"✅ 已新增：{task}", quick_reply=get_main_quick_reply())
     
     elif msg_lower in ["待辦", "待辦事項", "todo"]:
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
-        c.execute("SELECT id, task, todo_date FROM todos WHERE user_id = ? AND status = 'pending' ORDER BY todo_date LIMIT 20", (user_id,))
+        c.execute("SELECT id, task, todo_date FROM todos WHERE user_id = ? AND status = 'pending' ORDER BY todo_date", (user_id,))
         todos = c.fetchall()
         conn.close()
         if todos:
@@ -726,7 +551,7 @@ def handle_message(event):
     # ========== 預設回應 ==========
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：\n\n或輸入以下指令：\n• 天氣 - 查詢天氣\n• 單字 - 隨機英文單字\n• 課程 - 選科目\n• 統計 / 運動社會學 / 探索教育\n• 查 t-test\n• 新增 買牛奶",
+            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：",
             quick_reply=get_main_quick_reply()
         )
     
@@ -764,13 +589,12 @@ def logout():
 def admin_dashboard():
     return render_template_string(DASHBOARD_TEMPLATE)
 
-# 管理函數
 def get_table_info(table_type):
     tables = {
         'vocabulary': {'table': 'vocabulary', 'name': '英文單字', 'columns': ['word', 'meaning', 'example'], 'labels': ['單字', '意思', '例句']},
-        'statistics': {'table': 'statistics_glossary', 'name': '統計專有名詞', 'columns': ['term', 'translation', 'definition', 'code', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '程式碼', '核心']},
-        'sociology': {'table': 'sociology_glossary', 'name': '運動社會學', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
-        'outdoor': {'table': 'outdoor_glossary', 'name': '探索教育', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
+        'stats': {'table': 'glossary_stats', 'name': '統計專有名詞', 'columns': ['term', 'translation', 'definition', 'code', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '程式碼', '核心']},
+        'socio': {'table': 'glossary_socio', 'name': '運動社會學', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
+        'outdoor': {'table': 'glossary_outdoor', 'name': '探索教育', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
     }
     return tables.get(table_type)
 
@@ -786,8 +610,6 @@ def admin_table(table_type):
     c.execute(f"SELECT * FROM {info['table']} ORDER BY id")
     rows = c.fetchall()
     conn.close()
-    
-    # 取得欄位名稱（從 cursor description）
     return render_template_string(TABLE_TEMPLATE, rows=rows, info=info, table_type=table_type)
 
 @app.route('/admin/add/<table_type>', methods=['POST'])
@@ -898,8 +720,8 @@ DASHBOARD_TEMPLATE = '''
         <p><a href="/logout" style="color: red;">登出</a></p>
         <div style="display: grid; gap: 15px; margin-top: 30px;">
             <a href="/admin/vocabulary" style="display: block; padding: 15px; background: #3498db; color: white; text-decoration: none; border-radius: 8px;">📚 英文單字管理</a>
-            <a href="/admin/statistics" style="display: block; padding: 15px; background: #2ecc71; color: white; text-decoration: none; border-radius: 8px;">📊 實驗設計與統計</a>
-            <a href="/admin/sociology" style="display: block; padding: 15px; background: #e74c3c; color: white; text-decoration: none; border-radius: 8px;">⚽ 運動社會學</a>
+            <a href="/admin/stats" style="display: block; padding: 15px; background: #2ecc71; color: white; text-decoration: none; border-radius: 8px;">📊 統計專有名詞</a>
+            <a href="/admin/socio" style="display: block; padding: 15px; background: #e74c3c; color: white; text-decoration: none; border-radius: 8px;">⚽ 運動社會學</a>
             <a href="/admin/outdoor" style="display: block; padding: 15px; background: #f39c12; color: white; text-decoration: none; border-radius: 8px;">🏕️ 探索教育</a>
         </div>
     </div>
