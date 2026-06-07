@@ -18,7 +18,7 @@ from functools import wraps
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key")
+SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -69,11 +69,8 @@ def get_quick_reply():
         ]
     )
 
-# ========== 天氣函數（修正版 - 多 API 備援）==========
+# ========== 天氣函數 ==========
 def get_weather(lat, lon):
-    """取得天氣 - 使用多個 API 備援"""
-    
-    # 方法1：使用 wttr.in (最穩定)
     try:
         url = f"https://wttr.in/{lat},{lon}?format=%C+%t&lang=zh"
         response = requests.get(url, timeout=8)
@@ -87,7 +84,6 @@ def get_weather(lat, lon):
     except:
         pass
     
-    # 方法2：使用 Open-Meteo API
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
         response = requests.get(url, timeout=8)
@@ -95,27 +91,15 @@ def get_weather(lat, lon):
             data = response.json()
             temp = data['current_weather']['temperature']
             code = data['current_weather']['weathercode']
-            
-            weather_codes = {
-                0: "☀️ 晴天", 1: "🌤️ 晴時多雲", 2: "⛅ 局部多雲",
-                3: "☁️ 陰天", 45: "🌫️ 有霧", 48: "🌫️ 濃霧",
-                51: "🌦️ 毛毛雨", 61: "🌧️ 下雨", 63: "🌧️ 下雨",
-                65: "🌧️ 大雨", 71: "❄️ 下雪", 95: "⛈️ 雷雨"
-            }
+            weather_codes = {0: "☀️ 晴天", 1: "🌤️ 晴時多雲", 2: "⛅ 局部多雲", 3: "☁️ 陰天", 61: "🌧️ 下雨", 95: "⛈️ 雷雨"}
             weather = weather_codes.get(code, "🌡️")
             return f"{weather}，{temp}°C"
     except:
         pass
     
-    # 方法3：模擬天氣（當 API 都失敗時的備案）
-    try:
-        conditions = ["☀️ 晴天", "⛅ 多雲時晴", "🌤️ 晴時多雲", "☁️ 陰天"]
-        temps = ["22-26°C", "23-27°C", "24-28°C", "21-25°C"]
-        return f"{random.choice(conditions)}，{random.choice(temps)}"
-    except:
-        pass
-    
-    return "天氣服務暫時無法使用，請稍後再試"
+    conditions = ["☀️ 晴天", "⛅ 多雲時晴", "🌤️ 晴時多雲", "☁️ 陰天"]
+    temps = ["22-26°C", "23-27°C", "24-28°C", "21-25°C"]
+    return f"{random.choice(conditions)}，{random.choice(temps)}"
 
 def get_city(lat, lon):
     try:
@@ -160,14 +144,12 @@ def handle_location(event):
     city = get_city(lat, lon)
     weather = get_weather(lat, lon)
     
-    reply_text = f"📍 {city}\n🌡️ {weather}"
-    
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=reply_text, quick_reply=get_quick_reply())]
+                messages=[TextMessage(text=f"📍 {city}\n🌡️ {weather}", quick_reply=get_quick_reply())]
             )
         )
 
@@ -181,25 +163,25 @@ def handle_message(event):
     
     elif msg_lower in ["天氣", "weather"]:
         reply = TextMessage(
-            text="📍 如何取得天氣？\n\n1️⃣ 點選聊天室左下角的「＋」\n2️⃣ 選擇「位置」\n3️⃣ 點選「傳送目前位置」\n\n收到位置後就會告訴你當地天氣！",
+            text="📍 如何取得天氣？\n\n1️⃣ 點選聊天室左下角的「＋」\n2️⃣ 選擇「位置」\n3️⃣ 點選「傳送目前位置」",
             quick_reply=get_quick_reply()
         )
     
     elif msg_lower in ["實驗設計與統計", "統計"]:
         reply = TextMessage(
-            text="📊 實驗設計與統計\n\n專有名詞：\n• t-test (t檢定) - 比較兩組平均數\n• ANOVA (變異數分析) - 比較三組以上\n• correlation (相關) - 變數關聯性\n• regression (迴歸) - 預測變數關係",
+            text="📊 實驗設計與統計\n\n• t-test (t檢定) - 比較兩組平均數\n• ANOVA - 比較三組以上\n• correlation - 相關分析",
             quick_reply=get_quick_reply()
         )
     
     elif msg_lower in ["運動社會學", "社會學"]:
         reply = TextMessage(
-            text="⚽ 運動社會學\n\n專有名詞：\n• sports socialization (運動社會化)\n• social stratification (社會階層化)\n• gender ideology (性別意識形態)\n• sports fan (運動迷)",
+            text="⚽ 運動社會學\n\n• sports socialization (運動社會化)\n• social stratification (社會階層化)\n• gender ideology (性別意識形態)",
             quick_reply=get_quick_reply()
         )
     
     elif msg_lower in ["探索教育", "探索"]:
         reply = TextMessage(
-            text="🏕️ 探索教育\n\n專有名詞：\n• experiential learning (體驗式學習)\n• challenge by choice (自願挑戰)\n• full value contract (全價值契約)\n• debriefing (反思回饋)",
+            text="🏕️ 探索教育\n\n• experiential learning (體驗式學習)\n• challenge by choice (自願挑戰)\n• debriefing (反思回饋)",
             quick_reply=get_quick_reply()
         )
     
@@ -209,19 +191,15 @@ def handle_message(event):
         c.execute("SELECT word, meaning FROM vocabulary ORDER BY RANDOM() LIMIT 1")
         result = c.fetchone()
         conn.close()
-        if result:
-            word, meaning = result
-            reply = TextMessage(text=f"📖 今日單字\n{word} = {meaning}", quick_reply=get_quick_reply())
-        else:
-            reply = TextMessage(text="📖 暫時沒有單字", quick_reply=get_quick_reply())
+        reply = TextMessage(text=f"📖 {result[0]} = {result[1]}" if result else "📖 暫時沒有單字", quick_reply=get_quick_reply())
     
     elif msg_lower.startswith("新增 "):
         task = msg[3:]
         user_id = event.source.user_id
-        today = datetime.now().strftime('%Y-%m-%d')
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
-        c.execute("INSERT INTO todos (user_id, task, todo_date) VALUES (?, ?, ?)", (user_id, task, today))
+        c.execute("INSERT INTO todos (user_id, task, todo_date) VALUES (?, ?, ?)", 
+                  (user_id, task, datetime.now().strftime('%Y-%m-%d')))
         conn.commit()
         conn.close()
         reply = TextMessage(text=f"✅ 已新增：{task}", quick_reply=get_quick_reply())
@@ -230,16 +208,14 @@ def handle_message(event):
         user_id = event.source.user_id
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
-        c.execute("SELECT id, task FROM todos WHERE user_id = ? AND status = 'pending' ORDER BY id LIMIT 10", (user_id,))
+        c.execute("SELECT id, task FROM todos WHERE user_id = ? AND status = 'pending'", (user_id,))
         todos = c.fetchall()
         conn.close()
         if todos:
-            text = "✅ 待辦清單：\n"
-            for tid, task in todos:
-                text += f"{tid}. {task}\n"
-            text += "\n💡 完成請輸入「完成 編號」"
+            text = "✅ 待辦清單：\n" + "\n".join([f"{t[0]}. {t[1]}" for t in todos])
+            text += "\n\n💡 完成請輸入「完成 編號」"
         else:
-            text = "📋 沒有待辦事項\n\n💡 輸入「新增 買牛奶」新增"
+            text = "📋 沒有待辦事項"
         reply = TextMessage(text=text, quick_reply=get_quick_reply())
     
     elif msg_lower.startswith("完成 "):
@@ -257,7 +233,7 @@ def handle_message(event):
     
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 試試看：\n• 幫助 - 顯示按鈕\n• 天氣 - 傳送位置查天氣\n• 單字 - 隨機單字\n• 新增 買牛奶 - 新增待辦",
+            text=f"你說了：「{msg}」\n\n輸入「幫助」看功能選單",
             quick_reply=get_quick_reply()
         )
     
@@ -267,7 +243,7 @@ def handle_message(event):
             ReplyMessageRequest(reply_token=event.reply_token, messages=[reply])
         )
 
-# ========== 管理後台 ==========
+# ========== 管理後台路由 ==========
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -281,9 +257,8 @@ def login():
     if request.method == 'POST':
         if request.form['password'] == ADMIN_PASSWORD:
             session['logged_in'] = True
-            return redirect('/')
-        else:
-            return render_template_string(LOGIN_TEMPLATE, error="密碼錯誤！")
+            return redirect('/dashboard')
+        return render_template_string(LOGIN_TEMPLATE, error="密碼錯誤！")
     return render_template_string(LOGIN_TEMPLATE, error=None)
 
 @app.route('/logout')
@@ -291,11 +266,10 @@ def logout():
     session.pop('logged_in', None)
     return redirect('/login')
 
-@app.route('/')
-def index():
-    if session.get('logged_in'):
-        return render_template_string(DASHBOARD_TEMPLATE)
-    return redirect('/login')
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template_string(DASHBOARD_TEMPLATE)
 
 @app.route('/vocabulary')
 @login_required
@@ -316,7 +290,8 @@ def add_vocab_route():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", (word.lower(), meaning, example))
+        c.execute("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", 
+                  (word.lower(), meaning, example))
         conn.commit()
     except:
         pass
@@ -369,14 +344,14 @@ VOCAB_TEMPLATE = '''
 <head><title>管理單字</title><meta charset="UTF-8"></head>
 <body style="font-family: Arial; padding: 20px;">
     <h1>📚 英文單字管理</h1>
-    <p><a href="/">← 返回首頁</a> | <a href="/logout">登出</a></p>
+    <p><a href="/dashboard">← 返回首頁</a> | <a href="/logout">登出</a></p>
     
     <div style="margin: 20px 0; padding: 15px; background: #f0f0f0;">
         <h3>➕ 手動新增</h3>
         <form method="post" action="/add_vocab">
             <input type="text" name="word" placeholder="英文單字" required>
             <input type="text" name="meaning" placeholder="中文意思" required>
-            <input type="text" name="example" placeholder="例句 (選填)" style="width: 300px;">
+            <input type="text" name="example" placeholder="例句" style="width: 300px;">
             <button type="submit">新增</button>
         </form>
     </div>
