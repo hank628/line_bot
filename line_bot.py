@@ -16,13 +16,13 @@ from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
-import json
 
 # ========== 設定 ==========
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
+TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "")  # 老師的 LINE User ID
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -116,6 +116,8 @@ def init_db():
             ("apple", "蘋果 🍎", "I eat an apple every day."),
             ("book", "書 📚", "This is a good book."),
             ("computer", "電腦 💻", "I use computer to study."),
+            ("teacher", "老師 👩‍🏫", "My teacher is very kind."),
+            ("student", "學生 🧑‍🎓", "Every student should do homework."),
         ]
         c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
     
@@ -129,6 +131,12 @@ def init_db():
              "from scipy import stats\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
             ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
              "from scipy import stats\n\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\nr, p_value = stats.pearsonr(x, y)", 1),
+            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", 
+             "from sklearn.linear_model import LinearRegression\n\nX = [[1], [2], [3], [4], [5]]\ny = [2, 4, 6, 8, 10]\n\nmodel = LinearRegression()\nmodel.fit(X, y)\npredict = model.predict([[6]])\nprint(f'預測值: {predict[0]:.2f}')", 0),
+            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", 
+             "from scipy import stats\n\nobserved = [[10, 20, 30], [6, 9, 17]]\nchi2, p, dof, expected = stats.chi2_contingency(observed)\nprint(f'卡方值: {chi2:.4f}')", 0),
+            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", 
+             "if p_value < 0.05:\n    print('統計顯著')\nelse:\n    print('未達統計顯著')", 1),
         ]
         c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
     
@@ -137,9 +145,15 @@ def init_db():
     if c.fetchone()[0] == 0:
         default_socio = [
             ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
-            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
-            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
+            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象，運動參與也受此影響", 1),
+            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待與刻板印象", 1),
             ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
+            ("symbolic interactionism", "符號互動論", "透過運動中的符號、語言和互動來理解社會意義的理論視角", 0),
+            ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
+            ("functionalist theory", "功能論", "分析運動對社會穩定、整合和秩序維持的貢獻", 0),
+            ("commercialization", "商業化", "運動逐漸被市場邏輯主導，追求利潤極大化的現象", 0),
+            ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
+            ("sports nationalism", "運動民族主義", "透過國際運動賽事表達和強化國家認同與愛國情懷", 0),
         ]
         c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
     
@@ -147,9 +161,16 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM glossary_outdoor")
     if c.fetchone()[0] == 0:
         default_outdoor = [
-            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
-            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
+            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程：具體經驗→反思觀察→抽象概念→主動驗證", 1),
+            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度，確保心理安全感", 1),
+            ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾，確保每個人的價值被尊重", 1),
             ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
+            ("comfort zone", "舒適圈", "個人感到熟悉、安全、無壓力的狀態區域", 0),
+            ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
+            ("panic zone", "恐慌圈", "壓力過大導致無法學習和成長的區域", 0),
+            ("ropes course", "繩索課程", "利用高低空繩索設施進行的體驗教育活動", 0),
+            ("initiative task", "團隊任務", "需要團隊合作解決問題的活動，通常有明確目標和限制條件", 0),
+            ("processing", "引導討論", "帶領參與者反思活動經驗，連結到日常生活的引導技巧", 1),
         ]
         c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
     
@@ -185,35 +206,38 @@ def get_city_from_coords(lat, lon):
     except:
         return "您的位置"
 
-# ========== 常駐按鈕選單 ==========
+# ========== 6個常駐按鈕選單 ==========
 def get_main_quick_reply():
     return QuickReply(
         items=[
             QuickReplyItem(action=MessageAction(label="🌤️天氣", text="天氣")),
             QuickReplyItem(action=MessageAction(label="📚英字", text="單字")),
-            QuickReplyItem(action=MessageAction(label="📚課程", text="課程")),
+            QuickReplyItem(action=MessageAction(label="📊統計", text="統計")),
+            QuickReplyItem(action=MessageAction(label="⚽社會", text="社會學")),
+            QuickReplyItem(action=MessageAction(label="🏕️探索", text="探索")),
             QuickReplyItem(action=MessageAction(label="✅待辦", text="待辦")),
         ]
     )
 
-def get_course_quick_reply():
-    return QuickReply(
-        items=[
-            QuickReplyItem(action=MessageAction(label="📊統計", text="統計")),
-            QuickReplyItem(action=MessageAction(label="⚽社會", text="社會學")),
-            QuickReplyItem(action=MessageAction(label="🏕️探索", text="探索")),
-            QuickReplyItem(action=MessageAction(label="◀️回主選單", text="幫助")),
-        ]
-    )
+# ========== 分頁設定 ==========
+PAGE_SIZE = 10
 
-# ========== 課程查詢函數 ==========
-def get_stats_list():
+# ========== 統計查詢函數 ==========
+def get_stats_list(page=1, keyword=None):
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_stats ORDER BY id")
+    offset = (page - 1) * PAGE_SIZE
+    if keyword:
+        c.execute("SELECT id, term, translation FROM glossary_stats WHERE term LIKE ? OR translation LIKE ? ORDER BY id LIMIT ? OFFSET ?", 
+                  (f'%{keyword}%', f'%{keyword}%', PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_stats WHERE term LIKE ? OR translation LIKE ?", 
+                          (f'%{keyword}%', f'%{keyword}%')).fetchone()[0]
+    else:
+        c.execute("SELECT id, term, translation FROM glossary_stats ORDER BY id LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_stats").fetchone()[0]
     results = c.fetchall()
     conn.close()
-    return results
+    return results, total
 
 def get_stats_detail(term_id):
     conn = sqlite3.connect('course_bot.db')
@@ -223,13 +247,22 @@ def get_stats_detail(term_id):
     conn.close()
     return result
 
-def get_socio_list():
+# ========== 社會學查詢函數 ==========
+def get_socio_list(page=1, keyword=None):
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_socio ORDER BY id")
+    offset = (page - 1) * PAGE_SIZE
+    if keyword:
+        c.execute("SELECT id, term, translation FROM glossary_socio WHERE term LIKE ? OR translation LIKE ? ORDER BY id LIMIT ? OFFSET ?", 
+                  (f'%{keyword}%', f'%{keyword}%', PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_socio WHERE term LIKE ? OR translation LIKE ?", 
+                          (f'%{keyword}%', f'%{keyword}%')).fetchone()[0]
+    else:
+        c.execute("SELECT id, term, translation FROM glossary_socio ORDER BY id LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_socio").fetchone()[0]
     results = c.fetchall()
     conn.close()
-    return results
+    return results, total
 
 def get_socio_detail(term_id):
     conn = sqlite3.connect('course_bot.db')
@@ -239,13 +272,22 @@ def get_socio_detail(term_id):
     conn.close()
     return result
 
-def get_outdoor_list():
+# ========== 探索教育查詢函數 ==========
+def get_outdoor_list(page=1, keyword=None):
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute("SELECT id, term, translation FROM glossary_outdoor ORDER BY id")
+    offset = (page - 1) * PAGE_SIZE
+    if keyword:
+        c.execute("SELECT id, term, translation FROM glossary_outdoor WHERE term LIKE ? OR translation LIKE ? ORDER BY id LIMIT ? OFFSET ?", 
+                  (f'%{keyword}%', f'%{keyword}%', PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_outdoor WHERE term LIKE ? OR translation LIKE ?", 
+                          (f'%{keyword}%', f'%{keyword}%')).fetchone()[0]
+    else:
+        c.execute("SELECT id, term, translation FROM glossary_outdoor ORDER BY id LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM glossary_outdoor").fetchone()[0]
     results = c.fetchall()
     conn.close()
-    return results
+    return results, total
 
 def get_outdoor_detail(term_id):
     conn = sqlite3.connect('course_bot.db')
@@ -276,9 +318,15 @@ def push_todos():
     # 1. 老師個人待辦推播
     c.execute("SELECT id, task FROM teacher_todos WHERE todo_date = ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
     teacher_todos = c.fetchall()
-    for tid, task in teacher_todos:
-        print(f"老師待辦提醒: {task}")
-        c.execute("UPDATE teacher_todos SET status = 'done' WHERE id = ?", (tid,))
+    if teacher_todos and TEACHER_USER_ID:
+        for tid, task in teacher_todos:
+            try:
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.push_message(PushMessageRequest(to=TEACHER_USER_ID, messages=[TextMessage(text=f"👨‍🏫 老師待辦提醒：{task}")]))
+                c.execute("UPDATE teacher_todos SET status = 'done' WHERE id = ?", (tid,))
+            except Exception as e:
+                print(f"老師待辦推播失敗: {e}")
     
     # 2. 全班共同待辦推播
     c.execute("SELECT id, task FROM class_todos WHERE todo_date = ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
@@ -318,7 +366,7 @@ def push_todos():
         todos = c.fetchall()
         if todos:
             todo_list = "\n".join([f"{i+1}. {task}" for i, (_, task) in enumerate(todos)])
-            message = f"{title}\n\n{todo_list}"
+            message = f"{title}\n\n{todo_list}\n\n💡 完成請輸入「完成 編號」"
         else:
             message = f"{title}\n\n📋 目前沒有待辦事項"
         try:
@@ -361,7 +409,7 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 查詢天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 選擇科目\n• ✅待辦 - 管理個人待辦"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕使用功能：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📊統計 - 統計專有名詞\n• ⚽社會 - 運動社會學\n• 🏕️探索 - 探索教育\n• ✅待辦 - 管理待辦事項"
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -401,22 +449,21 @@ def handle_message(event):
     conn.commit()
     conn.close()
     
-    # 主選單
+    # 判斷是否為老師
+    is_teacher = (user_id == TEACHER_USER_ID)
+    
+    # ========== 主選單 ==========
     if msg_lower in ["幫助", "選單", "menu", "help"]:
         reply = TextMessage(text="🤖 請點擊下方按鈕：", quick_reply=get_main_quick_reply())
     
-    # 課程選單
-    elif msg_lower in ["課程", "course"]:
-        reply = TextMessage(text="📚 請選擇科目：", quick_reply=get_course_quick_reply())
-    
-    # 天氣
+    # ========== 天氣 ==========
     elif msg_lower in ["天氣", "weather"]:
         reply = TextMessage(
             text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置",
             quick_reply=get_main_quick_reply()
         )
     
-    # 英文單字
+    # ========== 英文單字 ==========
     elif msg_lower in ["單字", "english", "vocab"]:
         result = get_random_vocab()
         if result:
@@ -430,147 +477,308 @@ def handle_message(event):
     
     # ========== 統計 ==========
     elif msg_lower in ["統計", "statistics"]:
-        session['last_subject'] = 'stats'
-        stats_list = get_stats_list()
-        if stats_list:
-            text = "📊 統計專有名詞\n\n"
-            for i, (sid, term, trans) in enumerate(stats_list, 1):
+        session['current_subject'] = 'stats'
+        session['stats_page'] = 1
+        session['stats_keyword'] = None
+        data, total = get_stats_list(1)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        
+        if data:
+            text = f"📊 統計專有名詞 (第1頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細（如：1），或輸入「查 關鍵字」搜尋"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」，或輸入「查 關鍵字」搜尋"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
     
     # ========== 社會學 ==========
     elif msg_lower in ["社會學", "sociology"]:
-        session['last_subject'] = 'socio'
-        socio_list = get_socio_list()
-        if socio_list:
-            text = "⚽ 運動社會學\n\n"
-            for i, (sid, term, trans) in enumerate(socio_list, 1):
+        session['current_subject'] = 'socio'
+        session['socio_page'] = 1
+        session['socio_keyword'] = None
+        data, total = get_socio_list(1)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        
+        if data:
+            text = f"⚽ 運動社會學 (第1頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細（如：1）"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」，或輸入「查 關鍵字」搜尋"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
     
     # ========== 探索教育 ==========
     elif msg_lower in ["探索", "outdoor"]:
-        session['last_subject'] = 'outdoor'
-        outdoor_list = get_outdoor_list()
-        if outdoor_list:
-            text = "🏕️ 探索教育\n\n"
-            for i, (oid, term, trans) in enumerate(outdoor_list, 1):
+        session['current_subject'] = 'outdoor'
+        session['outdoor_page'] = 1
+        session['outdoor_keyword'] = None
+        data, total = get_outdoor_list(1)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        
+        if data:
+            text = f"🏕️ 探索教育 (第1頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += "\n💡 輸入數字查詳細（如：1）"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」，或輸入「查 關鍵字」搜尋"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_main_quick_reply())
     
-    # ========== 數字查詢（各科目獨立）==========
-    elif msg_lower.isdigit():
-        num = int(msg_lower)
-        last_subject = session.get('last_subject', '')
+    # ========== 分頁處理 ==========
+    elif msg_lower in ["下一頁", "上一頁"]:
+        current_subject = session.get('current_subject', '')
         
-        if last_subject == 'stats':
-            stats_list = get_stats_list()
-            if 1 <= num <= len(stats_list):
-                detail = get_stats_detail(stats_list[num-1][0])
-                if detail:
-                    term, trans, definition, code = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    if code:
-                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+        if current_subject == 'stats':
+            page = session.get('stats_page', 1)
+            keyword = session.get('stats_keyword', None)
+            if msg_lower == "下一頁":
+                page += 1
             else:
-                reply = TextMessage(text=f"請輸入 1-{len(stats_list)} 之間的數字", quick_reply=get_course_quick_reply())
-        
-        elif last_subject == 'socio':
-            socio_list = get_socio_list()
-            if 1 <= num <= len(socio_list):
-                detail = get_socio_detail(socio_list[num-1][0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+                page -= 1
+            page = max(1, page)
+            data, total = get_stats_list(page, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            if page > total_pages and total_pages > 0:
+                page = total_pages
+                data, total = get_stats_list(page, keyword)
+            session['stats_page'] = page
+            
+            if data:
+                title = "📊 統計專有名詞"
+                if keyword:
+                    title += f" (搜尋：{keyword})"
+                text = f"{title} (第{page}頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細，輸入「下一頁」/「上一頁」"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
             else:
-                reply = TextMessage(text=f"請輸入 1-{len(socio_list)} 之間的數字", quick_reply=get_course_quick_reply())
+                reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
         
-        elif last_subject == 'outdoor':
-            outdoor_list = get_outdoor_list()
-            if 1 <= num <= len(outdoor_list):
-                detail = get_outdoor_detail(outdoor_list[num-1][0])
-                if detail:
-                    term, trans, definition = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
+        elif current_subject == 'socio':
+            page = session.get('socio_page', 1)
+            keyword = session.get('socio_keyword', None)
+            if msg_lower == "下一頁":
+                page += 1
             else:
-                reply = TextMessage(text=f"請輸入 1-{len(outdoor_list)} 之間的數字", quick_reply=get_course_quick_reply())
+                page -= 1
+            page = max(1, page)
+            data, total = get_socio_list(page, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            if page > total_pages and total_pages > 0:
+                page = total_pages
+                data, total = get_socio_list(page, keyword)
+            session['socio_page'] = page
+            
+            if data:
+                title = "⚽ 運動社會學"
+                if keyword:
+                    title += f" (搜尋：{keyword})"
+                text = f"{title} (第{page}頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
         
+        elif current_subject == 'outdoor':
+            page = session.get('outdoor_page', 1)
+            keyword = session.get('outdoor_keyword', None)
+            if msg_lower == "下一頁":
+                page += 1
+            else:
+                page -= 1
+            page = max(1, page)
+            data, total = get_outdoor_list(page, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            if page > total_pages and total_pages > 0:
+                page = total_pages
+                data, total = get_outdoor_list(page, keyword)
+            session['outdoor_page'] = page
+            
+            if data:
+                title = "🏕️ 探索教育"
+                if keyword:
+                    title += f" (搜尋：{keyword})"
+                text = f"{title} (第{page}頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
         else:
-            # 預設查統計
-            stats_list = get_stats_list()
-            if 1 <= num <= len(stats_list):
-                detail = get_stats_detail(stats_list[num-1][0])
-                if detail:
-                    term, trans, definition, code = detail
-                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                    if code:
-                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-                else:
-                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
-            else:
-                reply = TextMessage(text="請先選擇科目（統計/社會學/探索）", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
     
-    # ========== 關鍵字查詢 ==========
+    # ========== 關鍵字搜尋 ==========
     elif msg_lower.startswith("查 "):
         keyword = msg_lower[3:]
-        conn = sqlite3.connect('course_bot.db')
-        c = conn.cursor()
-        c.execute("SELECT term, translation, definition, code FROM glossary_stats WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
-        result = c.fetchone()
-        if result:
-            term, trans, definition, code = result
-            text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-            if code:
-                text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+        current_subject = session.get('current_subject', '')
+        
+        if current_subject == 'stats':
+            session['stats_keyword'] = keyword
+            session['stats_page'] = 1
+            data, total = get_stats_list(1, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            
+            if data:
+                text = f"📊 統計專有名詞 (搜尋：{keyword}) (第1頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細，輸入「下一頁」看更多"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_main_quick_reply())
+        
+        elif current_subject == 'socio':
+            session['socio_keyword'] = keyword
+            session['socio_page'] = 1
+            data, total = get_socio_list(1, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            
+            if data:
+                text = f"⚽ 運動社會學 (搜尋：{keyword}) (第1頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_main_quick_reply())
+        
+        elif current_subject == 'outdoor':
+            session['outdoor_keyword'] = keyword
+            session['outdoor_page'] = 1
+            data, total = get_outdoor_list(1, keyword)
+            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+            
+            if data:
+                text = f"🏕️ 探索教育 (搜尋：{keyword}) (第1頁/共{total_pages}頁)\n\n"
+                for i, (sid, term, trans) in enumerate(data, 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入數字查詳細"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_course_quick_reply())
-        conn.close()
+            # 跨科目搜尋（先從統計找）
+            data, total = get_stats_list(1, keyword)
+            if data:
+                text = f"📊 統計專有名詞 (搜尋：{keyword})\n\n"
+                for i, (sid, term, trans) in enumerate(data[:5], 1):
+                    text += f"{i}. {term} - {trans}\n"
+                text += f"\n💡 輸入「統計」後再輸入數字查詳細"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"❌ 查無「{keyword}」\n\n試試：t-test, ANOVA, 運動社會化, 體驗式學習", quick_reply=get_main_quick_reply())
     
-    # ========== 學生個人待辦 ==========
+    # ========== 數字查詢 ==========
+    elif msg_lower.isdigit():
+        num = int(msg_lower)
+        current_subject = session.get('current_subject', '')
+        
+        if current_subject == 'stats':
+            page = session.get('stats_page', 1)
+            keyword = session.get('stats_keyword', None)
+            data, total = get_stats_list(page, keyword)
+            if 1 <= num <= len(data):
+                detail = get_stats_detail(data[num-1][0])
+                if detail:
+                    term, trans, definition, code = detail
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    if code:
+                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                    reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+        
+        elif current_subject == 'socio':
+            page = session.get('socio_page', 1)
+            keyword = session.get('socio_keyword', None)
+            data, total = get_socio_list(page, keyword)
+            if 1 <= num <= len(data):
+                detail = get_socio_detail(data[num-1][0])
+                if detail:
+                    term, trans, definition = detail
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+        
+        elif current_subject == 'outdoor':
+            page = session.get('outdoor_page', 1)
+            keyword = session.get('outdoor_keyword', None)
+            data, total = get_outdoor_list(page, keyword)
+            if 1 <= num <= len(data):
+                detail = get_outdoor_detail(data[num-1][0])
+                if detail:
+                    term, trans, definition = detail
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
+            else:
+                reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
+        
+        else:
+            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
+    
+    # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
         task = msg[3:]
         todo_date = datetime.now().strftime('%Y-%m-%d')
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
-        c.execute("INSERT INTO student_todos (user_id, task, todo_date, created_at) VALUES (?, ?, ?, ?)",
-                  (user_id, task, todo_date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        
+        if is_teacher:
+            # 老師的待辦存到老師待辦表
+            c.execute("INSERT INTO teacher_todos (task, todo_date, todo_time, created_at) VALUES (?, ?, ?, ?)",
+                      (task, todo_date, "23:59", datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            reply_text = f"✅ 已新增老師待辦：{task}"
+        else:
+            # 學生的待辦存到學生待辦表
+            c.execute("INSERT INTO student_todos (user_id, task, todo_date, created_at) VALUES (?, ?, ?, ?)",
+                      (user_id, task, todo_date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            reply_text = f"✅ 已新增個人待辦：{task}"
+        
         conn.commit()
         conn.close()
-        reply = TextMessage(text=f"✅ 已新增個人待辦：{task}", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=reply_text, quick_reply=get_main_quick_reply())
     
     elif msg_lower in ["待辦", "待辦事項", "todo"]:
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
-        c.execute("SELECT id, task, todo_date FROM student_todos WHERE user_id = ? AND status = 'pending' ORDER BY todo_date", (user_id,))
-        todos = c.fetchall()
-        conn.close()
-        if todos:
-            text = "✅ 個人待辦清單：\n"
-            for tid, task, date_str in todos:
-                text += f"{tid}. [{date_str}] {task}\n"
-            text += "\n💡 完成請輸入「完成 編號」"
+        
+        if is_teacher:
+            # 老師查看自己的待辦
+            c.execute("SELECT id, task, todo_date FROM teacher_todos WHERE status = 'pending' ORDER BY todo_date")
+            todos = c.fetchall()
+            if todos:
+                text = "👨‍🏫 老師待辦清單：\n"
+                for tid, task, date_str in todos:
+                    text += f"{tid}. [{date_str}] {task}\n"
+                text += "\n💡 完成請輸入「完成 編號」"
+            else:
+                text = "📋 沒有老師待辦事項\n\n💡 輸入「新增 買牛奶」新增"
         else:
-            text = "📋 沒有個人待辦事項\n\n💡 輸入「新增 買牛奶」新增"
+            # 學生查看自己的待辦
+            c.execute("SELECT id, task, todo_date FROM student_todos WHERE user_id = ? AND status = 'pending' ORDER BY todo_date", (user_id,))
+            todos = c.fetchall()
+            if todos:
+                text = "✅ 個人待辦清單：\n"
+                for tid, task, date_str in todos:
+                    text += f"{tid}. [{date_str}] {task}\n"
+                text += "\n💡 完成請輸入「完成 編號」"
+            else:
+                text = "📋 沒有個人待辦事項\n\n💡 輸入「新增 買牛奶」新增"
+        
+        conn.close()
         reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
     
     elif msg_lower.startswith("完成 "):
@@ -578,16 +786,25 @@ def handle_message(event):
             todo_id = int(msg_lower[3:])
             conn = sqlite3.connect('course_bot.db')
             c = conn.cursor()
-            c.execute("UPDATE student_todos SET status = 'done' WHERE id = ? AND user_id = ?", (todo_id, user_id))
+            
+            if is_teacher:
+                c.execute("UPDATE teacher_todos SET status = 'done' WHERE id = ?", (todo_id,))
+            else:
+                c.execute("UPDATE student_todos SET status = 'done' WHERE id = ? AND user_id = ?", (todo_id, user_id))
+            
             conn.commit()
             conn.close()
-            reply = TextMessage(text=f"✅ 已完成個人待辦編號 {todo_id}", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text=f"✅ 已完成編號 {todo_id}", quick_reply=get_main_quick_reply())
         except:
             reply = TextMessage(text="請輸入：完成 1", quick_reply=get_main_quick_reply())
     
+    # ========== 取得我的 User ID（僅老師可用）==========
+    elif msg_lower == "取得我的id" and is_teacher:
+        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
+    
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：\n\n或輸入：\n• 統計 - 查看統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育名詞\n• 查 t-test - 搜尋\n• 新增 買牛奶 - 個人待辦",
+            text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕使用功能：\n\n或輸入：\n• 統計 - 統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育\n• 查 t-test - 搜尋\n• 新增 買牛奶 - 待辦",
             quick_reply=get_main_quick_reply()
         )
     
@@ -625,7 +842,6 @@ def logout():
 def admin_dashboard():
     return render_template_string(DASHBOARD_TEMPLATE)
 
-# ========== 資料表管理函數 ==========
 def get_table_info(table_type):
     tables = {
         'vocabulary': {'table': 'vocabulary', 'name': '英文單字', 'columns': ['word', 'meaning', 'example'], 'labels': ['單字', '意思', '例句']},
