@@ -30,7 +30,7 @@ app.secret_key = SECRET_KEY
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# ========== 初始化資料庫（修正版）==========
+# ========== 初始化資料庫 ==========
 def init_db():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
@@ -43,7 +43,7 @@ def init_db():
         example TEXT
     )''')
     
-    # 統計專有名詞表（欄位順序修正）
+    # 統計專有名詞表（有 code 欄位）
     c.execute('''CREATE TABLE IF NOT EXISTS statistics_glossary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -53,7 +53,7 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 運動社會學專有名詞表
+    # 運動社會學專有名詞表（沒有 code 欄位）
     c.execute('''CREATE TABLE IF NOT EXISTS sociology_glossary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -62,7 +62,7 @@ def init_db():
         is_starred INTEGER DEFAULT 0
     )''')
     
-    # 探索教育專有名詞表
+    # 探索教育專有名詞表（沒有 code 欄位）
     c.execute('''CREATE TABLE IF NOT EXISTS outdoor_glossary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -142,7 +142,7 @@ def init_db():
 
 init_db()
 
-# ========== 常駐按鈕選單（每次回覆都附帶）==========
+# ========== 常駐按鈕選單 ==========
 def get_main_quick_reply():
     return QuickReply(
         items=[
@@ -163,14 +163,13 @@ def get_course_quick_reply():
         ]
     )
 
-# ========== 天氣函數（修正為中文）==========
+# ========== 天氣函數 ==========
 def get_weather(lat, lon):
     try:
         url = f"https://wttr.in/{lat},{lon}?format=%C+%t&lang=zh"
         response = requests.get(url, timeout=8)
         if response.status_code == 200 and response.text.strip():
             weather_text = response.text.strip()
-            # 將英文天氣轉中文
             weather_map = {
                 'Sunny': '晴天', 'Clear': '晴朗', 'Partly cloudy': '多雲時晴',
                 'Cloudy': '陰天', 'Overcast': '陰天', 'Rain': '雨天',
@@ -211,30 +210,101 @@ def get_city(lat, lon):
     except:
         return "您的位置"
 
-# ========== 課程查詢函數 ==========
+# ========== 課程查詢函數（分別處理不同表格）==========
 PAGE_SIZE = 10
 
-def get_glossary_paginated(table, page, show_starred_only=False):
+def get_stats_paginated(page, show_starred_only=False):
+    """統計表格（有 code 欄位）"""
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     offset = (page - 1) * PAGE_SIZE
     if show_starred_only:
-        c.execute(f"SELECT id, term, translation, definition, code, is_starred FROM {table} WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE is_starred = 1").fetchone()[0]
+        c.execute("SELECT id, term, translation, definition, code, is_starred FROM statistics_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM statistics_glossary WHERE is_starred = 1").fetchone()[0]
     else:
-        c.execute(f"SELECT id, term, translation, definition, code, is_starred FROM {table} ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
-        total = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        c.execute("SELECT id, term, translation, definition, code, is_starred FROM statistics_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM statistics_glossary").fetchone()[0]
     data = c.fetchall()
     conn.close()
     return data, total
 
-def search_glossary(table, keyword):
+def get_sociology_paginated(page, show_starred_only=False):
+    """社會學表格（沒有 code 欄位）"""
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute(f"SELECT id, term, translation, definition, code FROM {table} WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    offset = (page - 1) * PAGE_SIZE
+    if show_starred_only:
+        c.execute("SELECT id, term, translation, definition, is_starred FROM sociology_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM sociology_glossary WHERE is_starred = 1").fetchone()[0]
+    else:
+        c.execute("SELECT id, term, translation, definition, is_starred FROM sociology_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM sociology_glossary").fetchone()[0]
+    data = c.fetchall()
+    conn.close()
+    return data, total
+
+def get_outdoor_paginated(page, show_starred_only=False):
+    """探索教育表格（沒有 code 欄位）"""
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    offset = (page - 1) * PAGE_SIZE
+    if show_starred_only:
+        c.execute("SELECT id, term, translation, definition, is_starred FROM outdoor_glossary WHERE is_starred = 1 ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM outdoor_glossary WHERE is_starred = 1").fetchone()[0]
+    else:
+        c.execute("SELECT id, term, translation, definition, is_starred FROM outdoor_glossary ORDER BY term LIMIT ? OFFSET ?", (PAGE_SIZE, offset))
+        total = c.execute("SELECT COUNT(*) FROM outdoor_glossary").fetchone()[0]
+    data = c.fetchall()
+    conn.close()
+    return data, total
+
+def search_stats(keyword):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT id, term, translation, definition, code FROM statistics_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
     results = c.fetchall()
     conn.close()
     return results
+
+def search_sociology(keyword):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT id, term, translation, definition FROM sociology_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    results = c.fetchall()
+    conn.close()
+    return results
+
+def search_outdoor(keyword):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT id, term, translation, definition FROM outdoor_glossary WHERE term LIKE ? OR translation LIKE ? LIMIT 5", (f'%{keyword}%', f'%{keyword}%'))
+    results = c.fetchall()
+    conn.close()
+    return results
+
+def get_stats_by_id(id):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT term, translation, definition, code FROM statistics_glossary WHERE id = ?", (id,))
+    result = c.fetchone()
+    conn.close()
+    return result
+
+def get_sociology_by_id(id):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT term, translation, definition FROM sociology_glossary WHERE id = ?", (id,))
+    result = c.fetchone()
+    conn.close()
+    return result
+
+def get_outdoor_by_id(id):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT term, translation, definition FROM outdoor_glossary WHERE id = ?", (id,))
+    result = c.fetchone()
+    conn.close()
+    return result
 
 # ========== 待辦推播 ==========
 def push_todos():
@@ -307,7 +377,6 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    # 初次加入直接顯示歡迎訊息 + 按鈕
     welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 下方按鈕可直接點選：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 三種課程專有名詞\n• ✅待辦 - 管理待辦事項"
     
     with ApiClient(configuration) as api_client:
@@ -349,26 +418,17 @@ def handle_message(event):
     conn.commit()
     conn.close()
     
-    # 主選單 - 輸入幫助或選單都顯示按鈕
+    # 主選單
     if msg_lower in ["幫助", "選單", "menu", "help"]:
-        reply = TextMessage(
-            text="🤖 HANK EduMentor\n\n📌 點擊下方按鈕使用功能：",
-            quick_reply=get_main_quick_reply()
-        )
+        reply = TextMessage(text="🤖 HANK EduMentor\n\n📌 點擊下方按鈕使用功能：", quick_reply=get_main_quick_reply())
     
     # 課程選單
     elif msg_lower in ["課程", "course"]:
-        reply = TextMessage(
-            text="📚 請選擇科目：",
-            quick_reply=get_course_quick_reply()
-        )
+        reply = TextMessage(text="📚 請選擇科目：", quick_reply=get_course_quick_reply())
     
     # 天氣
     elif msg_lower in ["天氣", "weather"]:
-        reply = TextMessage(
-            text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置",
-            quick_reply=get_main_quick_reply()
-        )
+        reply = TextMessage(text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置", quick_reply=get_main_quick_reply())
     
     # 英文單字
     elif msg_lower in ["單字", "english", "vocab"]:
@@ -386,29 +446,30 @@ def handle_message(event):
     elif msg_lower in ["統計", "實驗設計與統計", "statistics"]:
         session['stats_page'] = 1
         session['stats_mode'] = 'all'
-        data, total = get_glossary_paginated('statistics_glossary', 1, False)
+        data, total = get_stats_paginated(1, False)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
         if data:
             text = f"📊 實驗設計與統計 (第1頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                star = "⭐ " if starred else ""
-                text += f"{i}. {star}{term} - {trans}\n"
+            for i, row in enumerate(data, 1):
+                # row: (id, term, translation, definition, code, is_starred)
+                star = "⭐ " if row[5] else ""
+                text += f"{i}. {star}{row[1]} - {row[2]}\n"
             text += f"\n💡 指令：\n• 輸入數字 (1~{len(data)}) 查詳細\n• 輸入「下一頁」/「上一頁」\n• 輸入「核心」看精選\n• 輸入「查 [關鍵字]」搜尋"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_course_quick_reply())
     
-    elif msg_lower == "核心" and session.get('stats_mode') is not None:
+    elif msg_lower == "核心" and session.get('stats_page') is not None:
         session['stats_mode'] = 'starred'
         session['stats_page'] = 1
-        data, total = get_glossary_paginated('statistics_glossary', 1, True)
+        data, total = get_stats_paginated(1, True)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
         if data:
             text = f"📊 統計核心名詞 (第1頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                text += f"{i}. {term} - {trans}\n"
+            for i, row in enumerate(data, 1):
+                text += f"{i}. {row[1]} - {row[2]}\n"
             text += f"\n💡 輸入數字查詳細"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
@@ -418,13 +479,14 @@ def handle_message(event):
     elif msg_lower in ["運動社會學", "社會學", "sociology"]:
         session['socio_page'] = 1
         session['socio_mode'] = 'starred'
-        data, total = get_glossary_paginated('sociology_glossary', 1, True)
+        data, total = get_sociology_paginated(1, True)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
         if data:
             text = f"⚽ 運動社會學核心名詞 (第1頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                text += f"{i}. {term} - {trans}\n"
+            for i, row in enumerate(data, 1):
+                # row: (id, term, translation, definition, is_starred)
+                text += f"{i}. {row[1]} - {row[2]}\n"
             text += f"\n💡 指令：\n• 輸入數字查詳細\n• 輸入「全部」看所有名詞\n• 輸入「查 [關鍵字]」搜尋"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
@@ -433,13 +495,13 @@ def handle_message(event):
     elif msg_lower == "全部" and session.get('socio_mode') is not None:
         session['socio_mode'] = 'all'
         session['socio_page'] = 1
-        data, total = get_glossary_paginated('sociology_glossary', 1, False)
+        data, total = get_sociology_paginated(1, False)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
         text = f"⚽ 運動社會學全部名詞 (第1頁/共{total_pages}頁)\n\n"
-        for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-            star = "⭐ " if starred else ""
-            text += f"{i}. {star}{term} - {trans}\n"
+        for i, row in enumerate(data, 1):
+            star = "⭐ " if row[4] else ""
+            text += f"{i}. {star}{row[1]} - {row[2]}\n"
         text += f"\n💡 輸入數字查詳細，或輸入「核心」看精選"
         reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
     
@@ -447,21 +509,37 @@ def handle_message(event):
     elif msg_lower in ["探索教育", "探索", "outdoor"]:
         session['outdoor_page'] = 1
         session['outdoor_mode'] = 'all'
-        data, total = get_glossary_paginated('outdoor_glossary', 1, False)
+        data, total = get_outdoor_paginated(1, False)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
         if data:
             text = f"🏕️ 探索教育 (第1頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                star = "⭐ " if starred else ""
-                text += f"{i}. {star}{term} - {trans}\n"
+            for i, row in enumerate(data, 1):
+                star = "⭐ " if row[4] else ""
+                text += f"{i}. {star}{row[1]} - {row[2]}\n"
             text += f"\n💡 指令：\n• 輸入數字查詳細\n• 輸入「下一頁」/「上一頁」\n• 輸入「核心」看精選\n• 輸入「查 [關鍵字]」搜尋"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
     
+    elif msg_lower == "核心" and session.get('outdoor_page') is not None:
+        session['outdoor_mode'] = 'starred'
+        session['outdoor_page'] = 1
+        data, total = get_outdoor_paginated(1, True)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        
+        if data:
+            text = f"🏕️ 探索教育核心名詞 (第1頁/共{total_pages}頁)\n\n"
+            for i, row in enumerate(data, 1):
+                text += f"{i}. {row[1]} - {row[2]}\n"
+            text += f"\n💡 輸入數字查詳細"
+            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+        else:
+            reply = TextMessage(text="🏕️ 暫無核心名詞", quick_reply=get_course_quick_reply())
+    
     # ========== 分頁處理 ==========
     elif msg_lower in ["下一頁", "上一頁"]:
+        # 統計分頁
         if session.get('stats_page') is not None:
             page = session.get('stats_page', 1)
             mode = session.get('stats_mode', 'all')
@@ -470,23 +548,24 @@ def handle_message(event):
             else:
                 page -= 1
             page = max(1, page)
-            data, total = get_glossary_paginated('statistics_glossary', page, mode == 'starred')
+            data, total = get_stats_paginated(page, mode == 'starred')
             total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
             if page > total_pages:
                 page = total_pages
-                data, total = get_glossary_paginated('statistics_glossary', page, mode == 'starred')
+                data, total = get_stats_paginated(page, mode == 'starred')
             session['stats_page'] = page
             
             if data:
                 text = f"📊 實驗設計與統計 (第{page}頁/共{total_pages}頁)\n\n"
-                for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                    star = "⭐ " if starred else ""
-                    text += f"{i}. {star}{term} - {trans}\n"
+                for i, row in enumerate(data, 1):
+                    star = "⭐ " if row[5] else ""
+                    text += f"{i}. {star}{row[1]} - {row[2]}\n"
                 text += f"\n💡 輸入數字查詳細"
                 reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
             else:
                 reply = TextMessage(text="📊 暫無資料", quick_reply=get_course_quick_reply())
         
+        # 探索教育分頁
         elif session.get('outdoor_page') is not None:
             page = session.get('outdoor_page', 1)
             mode = session.get('outdoor_mode', 'all')
@@ -495,17 +574,17 @@ def handle_message(event):
             else:
                 page -= 1
             page = max(1, page)
-            data, total = get_glossary_paginated('outdoor_glossary', page, mode == 'starred')
+            data, total = get_outdoor_paginated(page, mode == 'starred')
             total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
             if page > total_pages:
                 page = total_pages
-                data, total = get_glossary_paginated('outdoor_glossary', page, mode == 'starred')
+                data, total = get_outdoor_paginated(page, mode == 'starred')
             session['outdoor_page'] = page
             
             text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                star = "⭐ " if starred else ""
-                text += f"{i}. {star}{term} - {trans}\n"
+            for i, row in enumerate(data, 1):
+                star = "⭐ " if row[4] else ""
+                text += f"{i}. {star}{row[1]} - {row[2]}\n"
             text += f"\n💡 輸入數字查詳細"
             reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
         else:
@@ -514,38 +593,57 @@ def handle_message(event):
     # ========== 數字查詢 ==========
     elif msg_lower.isdigit():
         num = int(msg_lower)
+        
+        # 統計數字查詢
         if session.get('stats_page') is not None:
             page = session.get('stats_page', 1)
             mode = session.get('stats_mode', 'all')
-            data, total = get_glossary_paginated('statistics_glossary', page, mode == 'starred')
+            data, total = get_stats_paginated(page, mode == 'starred')
             if 1 <= num <= len(data):
-                idx, term, trans, definition, code, starred = data[num-1]
-                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                if code:
-                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
-                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                row = data[num-1]
+                result = get_stats_by_id(row[0])
+                if result:
+                    term, trans, definition, code = result
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    if code:
+                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
             else:
                 reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
         
+        # 社會學數字查詢
         elif session.get('socio_page') is not None:
             page = session.get('socio_page', 1)
             mode = session.get('socio_mode', 'starred')
-            data, total = get_glossary_paginated('sociology_glossary', page, mode == 'starred')
+            data, total = get_sociology_paginated(page, mode == 'starred')
             if 1 <= num <= len(data):
-                idx, term, trans, definition, code, starred = data[num-1]
-                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                row = data[num-1]
+                result = get_sociology_by_id(row[0])
+                if result:
+                    term, trans, definition = result
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
             else:
                 reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
         
+        # 探索教育數字查詢
         elif session.get('outdoor_page') is not None:
             page = session.get('outdoor_page', 1)
             mode = session.get('outdoor_mode', 'all')
-            data, total = get_glossary_paginated('outdoor_glossary', page, mode == 'starred')
+            data, total = get_outdoor_paginated(page, mode == 'starred')
             if 1 <= num <= len(data):
-                idx, term, trans, definition, code, starred = data[num-1]
-                text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
-                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                row = data[num-1]
+                result = get_outdoor_by_id(row[0])
+                if result:
+                    term, trans, definition = result
+                    text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                else:
+                    reply = TextMessage(text="查無資料", quick_reply=get_course_quick_reply())
             else:
                 reply = TextMessage(text="請輸入正確的編號", quick_reply=get_course_quick_reply())
         else:
@@ -556,18 +654,39 @@ def handle_message(event):
         keyword = msg_lower[3:]
         found = False
         
-        for table, name in [('statistics_glossary', '統計'), ('sociology_glossary', '社會學'), ('outdoor_glossary', '探索教育')]:
-            results = search_glossary(table, keyword)
+        # 查統計
+        results = search_stats(keyword)
+        if results:
+            for row in results:
+                term, trans, definition, code = row[1], row[2], row[3], row[4]
+                text = f"📖 **{term}** (統計)\n🀄️ {trans}\n📝 {definition}"
+                if code:
+                    text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                found = True
+                break
+        
+        # 查社會學
+        if not found:
+            results = search_sociology(keyword)
             if results:
-                for idx, term, trans, definition, code in results:
-                    text = f"📖 **{term}** ({name})\n🀄️ {trans}\n📝 {definition}"
-                    if code:
-                        text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+                for row in results:
+                    term, trans, definition = row[1], row[2], row[3]
+                    text = f"📖 **{term}** (社會學)\n🀄️ {trans}\n📝 {definition}"
                     reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
                     found = True
                     break
-            if found:
-                break
+        
+        # 查探索教育
+        if not found:
+            results = search_outdoor(keyword)
+            if results:
+                for row in results:
+                    term, trans, definition = row[1], row[2], row[3]
+                    text = f"📖 **{term}** (探索教育)\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
+                    found = True
+                    break
         
         if not found:
             reply = TextMessage(text=f"❌ 查無「{keyword}」\n\n試試：t-test, ANOVA, 運動社會化, 體驗式學習", quick_reply=get_course_quick_reply())
@@ -611,7 +730,7 @@ def handle_message(event):
         except:
             reply = TextMessage(text="請輸入：完成 1", quick_reply=get_main_quick_reply())
     
-    # 預設回應（附帶按鈕）
+    # 預設回應
     else:
         reply = TextMessage(
             text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：\n\n或輸入以下指令：\n• 天氣 - 傳送位置\n• 單字 - 隨機英文單字\n• 課程 - 選科目\n• 統計 / 運動社會學 / 探索教育\n• 查 t-test\n• 新增 買牛奶",
@@ -652,7 +771,7 @@ def logout():
 def admin_dashboard():
     return render_template_string(DASHBOARD_TEMPLATE)
 
-# 通用管理函數
+# 通用管理函數（修正欄位映射）
 def get_table_info(table_type):
     tables = {
         'vocabulary': {'table': 'vocabulary', 'name': '英文單字', 'columns': ['word', 'meaning', 'example'], 'labels': ['單字', '意思', '例句']},
@@ -834,7 +953,7 @@ TABLE_TEMPLATE = '''
                     <a href="/admin/delete/{{ table_type }}/{{ row[0] }}" onclick="return confirm('確定刪除？')">刪除</a>
                 </td>
             </form>
-        <tr>
+        </tr>
         {% endfor %}
     </table>
 </body>
