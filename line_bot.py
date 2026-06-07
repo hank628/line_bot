@@ -35,7 +35,7 @@ def init_db():
     import os
     db_path = 'course_bot.db'
     
-    # 檢查是否需要重建（如果表格不完整就重建）
+    # 檢查是否需要重建
     need_rebuild = False
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -542,7 +542,7 @@ def handle_message(event):
             else:
                 reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
     
     # 數字查詢
     elif msg_lower.isdigit():
@@ -594,7 +594,7 @@ def handle_message(event):
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
         
         else:
-            reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
     
     # 待辦事項
     elif msg_lower.startswith("新增 "):
@@ -665,6 +665,7 @@ def handle_message(event):
     elif "取得我的id" in msg_lower or "取得id" in msg_lower:
         reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n請將此 ID 設定到 Render 環境變數 TEACHER_USER_ID", quick_reply=get_main_quick_reply())
     
+    # 預設回應
     else:
         reply = TextMessage(
             text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育\n• 新增 買牛奶 - 待辦\n• 取得我的ID - 獲取使用者ID",
@@ -677,7 +678,7 @@ def handle_message(event):
             ReplyMessageRequest(reply_token=event.reply_token, messages=[reply])
         )
 
-# ========== 管理後台（簡化版）==========
+# ========== 管理後台 ==========
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -711,6 +712,8 @@ def get_table_info(table_type):
         'stats': {'table': 'glossary_stats', 'name': '統計專有名詞', 'columns': ['term', 'translation', 'definition', 'code'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '程式碼']},
         'socio': {'table': 'glossary_socio', 'name': '運動社會學', 'columns': ['term', 'translation', 'definition'], 'labels': ['英文/名詞', '中文翻譯', '解釋']},
         'outdoor': {'table': 'glossary_outdoor', 'name': '探索教育', 'columns': ['term', 'translation', 'definition'], 'labels': ['英文/名詞', '中文翻譯', '解釋']},
+        'teacher_todo': {'table': 'teacher_todos', 'name': '老師個人待辦', 'columns': ['task', 'todo_date', 'todo_time'], 'labels': ['待辦事項', '日期(YYYY-MM-DD)', '時間(HH:MM)']},
+        'class_todo': {'table': 'class_todos', 'name': '全班共同待辦', 'columns': ['task', 'todo_date', 'todo_time'], 'labels': ['待辦事項', '日期(YYYY-MM-DD)', '時間(HH:MM)']},
     }
     return tables.get(table_type)
 
@@ -773,6 +776,27 @@ def admin_delete(table_type, id):
     conn.close()
     return redirect(f'/admin/{table_type}')
 
+# ========== 學生待辦查看 ==========
+@app.route('/admin/student_todos')
+@login_required
+def admin_student_todos():
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT id, user_id, task, todo_date, status FROM student_todos ORDER BY todo_date DESC LIMIT 100")
+    rows = c.fetchall()
+    conn.close()
+    return render_template_string(STUDENT_TODOS_TEMPLATE, rows=rows)
+
+@app.route('/admin/delete_student_todo/<int:id>')
+@login_required
+def admin_delete_student_todo(id):
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM student_todos WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect('/admin/student_todos')
+
 # ========== HTML 模板 ==========
 LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
@@ -797,11 +821,18 @@ DASHBOARD_TEMPLATE = '''
     <div style="max-width: 800px; margin: 0 auto;">
         <h1 style="color: #2c3e50;">🤖 HANK EduMentor 管理後台</h1>
         <p><a href="/logout" style="color: red;">登出</a></p>
+        
         <div style="display: grid; gap: 15px; margin-top: 30px;">
-            <a href="/admin/vocabulary" style="display: block; padding: 15px; background: #3498db; color: white; text-decoration: none; border-radius: 8px;">📚 英文單字管理</a>
+            <h2 style="color: #3498db;">📚 教材管理</h2>
+            <a href="/admin/vocabulary" style="display: block; padding: 15px; background: #3498db; color: white; text-decoration: none; border-radius: 8px;">📖 英文單字管理</a>
             <a href="/admin/stats" style="display: block; padding: 15px; background: #2ecc71; color: white; text-decoration: none; border-radius: 8px;">📊 統計專有名詞</a>
             <a href="/admin/socio" style="display: block; padding: 15px; background: #e74c3c; color: white; text-decoration: none; border-radius: 8px;">⚽ 運動社會學</a>
             <a href="/admin/outdoor" style="display: block; padding: 15px; background: #f39c12; color: white; text-decoration: none; border-radius: 8px;">🏕️ 探索教育</a>
+            
+            <h2 style="color: #9b59b6; margin-top: 20px;">✅ 待辦管理</h2>
+            <a href="/admin/teacher_todo" style="display: block; padding: 15px; background: #1abc9c; color: white; text-decoration: none; border-radius: 8px;">👨‍🏫 老師個人待辦</a>
+            <a href="/admin/class_todo" style="display: block; padding: 15px; background: #e67e22; color: white; text-decoration: none; border-radius: 8px;">📢 全班共同待辦</a>
+            <a href="/admin/student_todos" style="display: block; padding: 15px; background: #95a5a6; color: white; text-decoration: none; border-radius: 8px;">👥 學生個人待辦（僅查看）</a>
         </div>
     </div>
 </body>
@@ -829,7 +860,7 @@ TABLE_TEMPLATE = '''
     <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
         <tr><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
         {% for row in rows %}
-        <tr>
+        <td>
             <form method="post" action="/admin/edit/{{ table_type }}/{{ row[0] }}">
                 <td>{{ row[0] }}</td>
                 {% for i in range(info.columns|length) %}
@@ -840,6 +871,32 @@ TABLE_TEMPLATE = '''
                     <a href="/admin/delete/{{ table_type }}/{{ row[0] }}" onclick="return confirm('確定刪除？')">刪除</a>
                 </td>
             </form>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
+'''
+
+STUDENT_TODOS_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head><title>學生待辦事項</title><meta charset="UTF-8"></head>
+<body style="font-family: Arial; padding: 20px;">
+    <h1>👥 學生個人待辦事項</h1>
+    <p><a href="/admin">← 返回首頁</a> | <a href="/logout">登出</a></p>
+    <p>⚠️ 此為學生自行新增的待辦，老師僅可查看，無法修改狀態。</p>
+    
+    <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
+        <tr><th>ID</th><th>學生ID</th><th>待辦事項</th><th>日期</th><th>狀態</th><th>操作</th></tr>
+        {% for row in rows %}
+        <tr>
+            <td>{{ row[0] }}</td>
+            <td>{{ row[1][:20] }}...{% if row[1]|length > 20 %}{% endif %}</td>
+            <td>{{ row[2] }}</td>
+            <td>{{ row[3] }}</td>
+            <td>{% if row[4] == 'pending' %}⏳ 待完成{% else %}✅ 已完成{% endif %}</td>
+            <td><a href="/admin/delete_student_todo/{{ row[0] }}" onclick="return confirm('確定刪除？')">刪除</a></td>
         </tr>
         {% endfor %}
     </table>
