@@ -30,7 +30,7 @@ app.secret_key = SECRET_KEY
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# ========== 初始化資料庫 ==========
+# ========== 初始化資料庫（修正版）==========
 def init_db():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
@@ -43,7 +43,7 @@ def init_db():
         example TEXT
     )''')
     
-    # 統計專有名詞表
+    # 統計專有名詞表（欄位順序修正）
     c.execute('''CREATE TABLE IF NOT EXISTS statistics_glossary (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         term TEXT UNIQUE,
@@ -99,26 +99,20 @@ def init_db():
         ]
         c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
     
-    # 預設統計名詞（含核心標記）
+    # 預設統計名詞
     c.execute("SELECT COUNT(*) FROM statistics_glossary")
     if c.fetchone()[0] == 0:
         default_stats = [
-            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異的統計方法", 
-             "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
-            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
-             "from scipy import stats\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
-             "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
-            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", 
-             "from sklearn.linear_model import LinearRegression\nmodel = LinearRegression()\nmodel.fit(X, y)", 1),
-            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", 
-             "from scipy import stats\nchi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)", 0),
-            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", 
-             "if p_value < 0.05:\n    print('統計顯著')", 1),
+            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異的統計方法", "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
+            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", "from scipy import stats\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
+            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
+            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", "from sklearn.linear_model import LinearRegression\nmodel = LinearRegression()\nmodel.fit(X, y)", 1),
+            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", "from scipy import stats\nchi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)", 0),
+            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", "if p_value < 0.05:\n    print('統計顯著')", 1),
         ]
         c.executemany("INSERT INTO statistics_glossary (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
     
-    # 預設社會學名詞（含核心標記）
+    # 預設社會學名詞
     c.execute("SELECT COUNT(*) FROM sociology_glossary")
     if c.fetchone()[0] == 0:
         default_socio = [
@@ -126,16 +120,12 @@ def init_db():
             ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
             ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
             ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
-            ("symbolic interactionism", "符號互動論", "透過運動中的符號、語言和互動來理解社會意義的理論視角", 0),
             ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
-            ("functionalist theory", "功能論", "分析運動對社會穩定、整合和秩序維持的貢獻", 0),
-            ("sports nationalism", "運動民族主義", "透過國際運動賽事表達和強化國家認同與愛國情懷", 0),
-            ("commercialization", "商業化", "運動逐漸被市場邏輯主導，追求利潤極大化的現象", 0),
             ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
         ]
         c.executemany("INSERT INTO sociology_glossary (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
     
-    # 預設探索教育名詞（含核心標記）
+    # 預設探索教育名詞
     c.execute("SELECT COUNT(*) FROM outdoor_glossary")
     if c.fetchone()[0] == 0:
         default_outdoor = [
@@ -143,10 +133,7 @@ def init_db():
             ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
             ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾", 1),
             ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
-            ("comfort zone", "舒適圈", "個人感到熟悉、安全、無壓力的狀態區域", 0),
             ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
-            ("panic zone", "恐慌圈", "壓力過大導致無法學習和成長的區域", 0),
-            ("ropes course", "繩索課程", "利用高低空繩索設施進行的體驗教育活動", 0),
         ]
         c.executemany("INSERT INTO outdoor_glossary (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
     
@@ -155,7 +142,7 @@ def init_db():
 
 init_db()
 
-# ========== 按鈕選單 ==========
+# ========== 常駐按鈕選單（每次回覆都附帶）==========
 def get_main_quick_reply():
     return QuickReply(
         items=[
@@ -176,16 +163,24 @@ def get_course_quick_reply():
         ]
     )
 
-# ========== 天氣函數 ==========
+# ========== 天氣函數（修正為中文）==========
 def get_weather(lat, lon):
     try:
         url = f"https://wttr.in/{lat},{lon}?format=%C+%t&lang=zh"
         response = requests.get(url, timeout=8)
         if response.status_code == 200 and response.text.strip():
             weather_text = response.text.strip()
-            parts = weather_text.split()
-            if len(parts) >= 2:
-                return f"{parts[0]}，{parts[1]}"
+            # 將英文天氣轉中文
+            weather_map = {
+                'Sunny': '晴天', 'Clear': '晴朗', 'Partly cloudy': '多雲時晴',
+                'Cloudy': '陰天', 'Overcast': '陰天', 'Rain': '雨天',
+                'Light rain': '小雨', 'Moderate rain': '中雨', 'Heavy rain': '大雨',
+                'Thunderstorm': '雷雨', 'Snow': '雪', 'Mist': '霧', 'Fog': '濃霧'
+            }
+            for en, zh in weather_map.items():
+                if en in weather_text:
+                    weather_text = weather_text.replace(en, zh)
+            return weather_text
     except:
         pass
     
@@ -196,13 +191,13 @@ def get_weather(lat, lon):
             data = response.json()
             temp = data['current_weather']['temperature']
             code = data['current_weather']['weathercode']
-            weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
-            weather = weather_codes.get(code, "🌡️")
+            weather_codes = {0: "晴天", 1: "晴時多雲", 2: "多雲", 3: "陰天", 61: "下雨", 95: "雷雨"}
+            weather = weather_codes.get(code, "未知")
             return f"{weather}，{temp}°C"
     except:
         pass
     
-    conditions = ["☀️晴天", "⛅多雲時晴", "🌤️晴時多雲", "☁️陰天"]
+    conditions = ["晴天", "多雲時晴", "晴時多雲", "陰天"]
     temps = ["22-26°C", "23-27°C", "24-28°C", "21-25°C"]
     return f"{random.choice(conditions)}，{random.choice(temps)}"
 
@@ -240,14 +235,6 @@ def search_glossary(table, keyword):
     results = c.fetchall()
     conn.close()
     return results
-
-def get_glossary_by_id(table, id):
-    conn = sqlite3.connect('course_bot.db')
-    c = conn.cursor()
-    c.execute(f"SELECT term, translation, definition, code FROM {table} WHERE id = ?", (id,))
-    result = c.fetchone()
-    conn.close()
-    return result
 
 # ========== 待辦推播 ==========
 def push_todos():
@@ -320,12 +307,15 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
+    # 初次加入直接顯示歡迎訊息 + 按鈕
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 下方按鈕可直接點選：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 三種課程專有名詞\n• ✅待辦 - 管理待辦事項"
+    
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text="🤖 歡迎使用 HANK EduMentor！\n\n請選擇功能：", quick_reply=get_main_quick_reply())]
+                messages=[TextMessage(text=welcome_text, quick_reply=get_main_quick_reply())]
             )
         )
 
@@ -359,13 +349,19 @@ def handle_message(event):
     conn.commit()
     conn.close()
     
-    # 主選單
-    if msg_lower in ["幫助", "選單", "menu"]:
-        reply = TextMessage(text="🤖 HANK EduMentor\n\n請選擇功能：", quick_reply=get_main_quick_reply())
+    # 主選單 - 輸入幫助或選單都顯示按鈕
+    if msg_lower in ["幫助", "選單", "menu", "help"]:
+        reply = TextMessage(
+            text="🤖 HANK EduMentor\n\n📌 點擊下方按鈕使用功能：",
+            quick_reply=get_main_quick_reply()
+        )
     
     # 課程選單
-    elif msg_lower == "課程":
-        reply = TextMessage(text="📚 請選擇科目：", quick_reply=get_course_quick_reply())
+    elif msg_lower in ["課程", "course"]:
+        reply = TextMessage(
+            text="📚 請選擇科目：",
+            quick_reply=get_course_quick_reply()
+        )
     
     # 天氣
     elif msg_lower in ["天氣", "weather"]:
@@ -375,16 +371,19 @@ def handle_message(event):
         )
     
     # 英文單字
-    elif msg_lower == "單字":
+    elif msg_lower in ["單字", "english", "vocab"]:
         conn = sqlite3.connect('course_bot.db')
         c = conn.cursor()
         c.execute("SELECT word, meaning FROM vocabulary ORDER BY RANDOM() LIMIT 1")
         result = c.fetchone()
         conn.close()
-        reply = TextMessage(text=f"📖 {result[0]} = {result[1]}" if result else "📖 暫無單字", quick_reply=get_main_quick_reply())
+        if result:
+            reply = TextMessage(text=f"📖 {result[0]} = {result[1]}", quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
     # ========== 統計 ==========
-    elif msg_lower in ["統計", "實驗設計與統計"]:
+    elif msg_lower in ["統計", "實驗設計與統計", "statistics"]:
         session['stats_page'] = 1
         session['stats_mode'] = 'all'
         data, total = get_glossary_paginated('statistics_glossary', 1, False)
@@ -416,9 +415,9 @@ def handle_message(event):
             reply = TextMessage(text="📊 暫無核心名詞", quick_reply=get_course_quick_reply())
     
     # ========== 運動社會學 ==========
-    elif msg_lower in ["運動社會學", "社會學"]:
+    elif msg_lower in ["運動社會學", "社會學", "sociology"]:
         session['socio_page'] = 1
-        session['socio_mode'] = 'starred'  # 預設顯示核心
+        session['socio_mode'] = 'starred'
         data, total = get_glossary_paginated('sociology_glossary', 1, True)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -445,7 +444,7 @@ def handle_message(event):
         reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
     
     # ========== 探索教育 ==========
-    elif msg_lower in ["探索教育", "探索"]:
+    elif msg_lower in ["探索教育", "探索", "outdoor"]:
         session['outdoor_page'] = 1
         session['outdoor_mode'] = 'all'
         data, total = get_glossary_paginated('outdoor_glossary', 1, False)
@@ -461,7 +460,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
     
-    # ========== 分頁和數字查詢處理 ==========
+    # ========== 分頁處理 ==========
     elif msg_lower in ["下一頁", "上一頁"]:
         if session.get('stats_page') is not None:
             page = session.get('stats_page', 1)
@@ -488,28 +487,6 @@ def handle_message(event):
             else:
                 reply = TextMessage(text="📊 暫無資料", quick_reply=get_course_quick_reply())
         
-        elif session.get('socio_page') is not None:
-            page = session.get('socio_page', 1)
-            mode = session.get('socio_mode', 'starred')
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
-            data, total = get_glossary_paginated('sociology_glossary', page, mode == 'starred')
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages:
-                page = total_pages
-                data, total = get_glossary_paginated('sociology_glossary', page, mode == 'starred')
-            session['socio_page'] = page
-            
-            title = "⚽ 運動社會學" + ("核心名詞" if mode == 'starred' else "全部名詞")
-            text = f"{title} (第{page}頁/共{total_pages}頁)\n\n"
-            for i, (idx, term, trans, definition, code, starred) in enumerate(data, 1):
-                text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 輸入數字查詳細"
-            reply = TextMessage(text=text, quick_reply=get_course_quick_reply())
-        
         elif session.get('outdoor_page') is not None:
             page = session.get('outdoor_page', 1)
             mode = session.get('outdoor_mode', 'all')
@@ -534,6 +511,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
     
+    # ========== 數字查詢 ==========
     elif msg_lower.isdigit():
         num = int(msg_lower)
         if session.get('stats_page') is not None:
@@ -573,7 +551,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="請先選擇一個科目", quick_reply=get_main_quick_reply())
     
-    # 查詢
+    # ========== 關鍵字查詢 ==========
     elif msg_lower.startswith("查 "):
         keyword = msg_lower[3:]
         found = False
@@ -592,7 +570,7 @@ def handle_message(event):
                 break
         
         if not found:
-            reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_course_quick_reply())
+            reply = TextMessage(text=f"❌ 查無「{keyword}」\n\n試試：t-test, ANOVA, 運動社會化, 體驗式學習", quick_reply=get_course_quick_reply())
     
     # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
@@ -604,7 +582,7 @@ def handle_message(event):
                   (user_id, task, todo_date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         conn.close()
-        reply = TextMessage(text=f"✅ 已新增：{task}", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=f"✅ 已新增：{task}\n📅 日期：{todo_date}", quick_reply=get_main_quick_reply())
     
     elif msg_lower in ["待辦", "待辦事項", "todo"]:
         conn = sqlite3.connect('course_bot.db')
@@ -633,9 +611,10 @@ def handle_message(event):
         except:
             reply = TextMessage(text="請輸入：完成 1", quick_reply=get_main_quick_reply())
     
+    # 預設回應（附帶按鈕）
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 試試看：\n• 天氣 - 傳送位置\n• 單字 - 隨機英文單字\n• 課程 - 選科目\n• 統計 - 統計名詞\n• 運動社會學\n• 探索教育\n• 查 t-test\n• 新增 買牛奶",
+            text=f"你說了：「{msg}」\n\n📌 試試看點擊下方按鈕：\n\n或輸入以下指令：\n• 天氣 - 傳送位置\n• 單字 - 隨機英文單字\n• 課程 - 選科目\n• 統計 / 運動社會學 / 探索教育\n• 查 t-test\n• 新增 買牛奶",
             quick_reply=get_main_quick_reply()
         )
     
@@ -673,15 +652,15 @@ def logout():
 def admin_dashboard():
     return render_template_string(DASHBOARD_TEMPLATE)
 
-# 通用編輯函數
-def get_table_info(table):
+# 通用管理函數
+def get_table_info(table_type):
     tables = {
-        'vocabulary': {'name': '英文單字', 'columns': ['word', 'meaning', 'example'], 'labels': ['單字', '意思', '例句']},
+        'vocabulary': {'table': 'vocabulary', 'name': '英文單字', 'columns': ['word', 'meaning', 'example'], 'labels': ['單字', '意思', '例句']},
         'statistics': {'table': 'statistics_glossary', 'name': '統計專有名詞', 'columns': ['term', 'translation', 'definition', 'code', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '程式碼', '核心']},
-        'sociology': {'table': 'sociology_glossary', 'name': '運動社會學專有名詞', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
-        'outdoor': {'table': 'outdoor_glossary', 'name': '探索教育專有名詞', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
+        'sociology': {'table': 'sociology_glossary', 'name': '運動社會學', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
+        'outdoor': {'table': 'outdoor_glossary', 'name': '探索教育', 'columns': ['term', 'translation', 'definition', 'is_starred'], 'labels': ['英文/名詞', '中文翻譯', '解釋', '核心']},
     }
-    return tables.get(table)
+    return tables.get(table_type)
 
 @app.route('/admin/<table_type>')
 @login_required
@@ -690,10 +669,9 @@ def admin_table(table_type):
     if not info:
         return redirect('/admin')
     
-    table_name = info.get('table', table_type)
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute(f"SELECT id, * FROM {table_name} ORDER BY id")
+    c.execute(f"SELECT id, * FROM {info['table']} ORDER BY id")
     data = c.fetchall()
     conn.close()
     return render_template_string(TABLE_TEMPLATE, data=data, info=info, table_type=table_type)
@@ -705,14 +683,13 @@ def admin_add(table_type):
     if not info:
         return redirect('/admin')
     
-    table_name = info.get('table', table_type)
     columns = info['columns']
     values = [request.form.get(col, '') for col in columns]
     
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     placeholders = ','.join(['?' for _ in columns])
-    c.execute(f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({placeholders})", values)
+    c.execute(f"INSERT INTO {info['table']} ({','.join(columns)}) VALUES ({placeholders})", values)
     conn.commit()
     conn.close()
     return redirect(f'/admin/{table_type}')
@@ -724,7 +701,6 @@ def admin_edit(table_type, id):
     if not info:
         return redirect('/admin')
     
-    table_name = info.get('table', table_type)
     columns = info['columns']
     values = [request.form.get(col, '') for col in columns]
     values.append(id)
@@ -732,7 +708,7 @@ def admin_edit(table_type, id):
     set_clause = ','.join([f"{col}=?" for col in columns])
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute(f"UPDATE {table_name} SET {set_clause} WHERE id = ?", values)
+    c.execute(f"UPDATE {info['table']} SET {set_clause} WHERE id = ?", values)
     conn.commit()
     conn.close()
     return redirect(f'/admin/{table_type}')
@@ -744,10 +720,9 @@ def admin_delete(table_type, id):
     if not info:
         return redirect('/admin')
     
-    table_name = info.get('table', table_type)
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    c.execute(f"DELETE FROM {table_name} WHERE id = ?", (id,))
+    c.execute(f"DELETE FROM {info['table']} WHERE id = ?", (id,))
     conn.commit()
     conn.close()
     return redirect(f'/admin/{table_type}')
@@ -768,7 +743,6 @@ def admin_import_csv(table_type):
     content = file.read().decode('utf-8')
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
-    table_name = info.get('table', table_type)
     columns = info['columns']
     
     for line in content.strip().split('\n'):
@@ -777,7 +751,7 @@ def admin_import_csv(table_type):
             values = parts[:len(columns)]
             placeholders = ','.join(['?' for _ in values])
             try:
-                c.execute(f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({placeholders})", values)
+                c.execute(f"INSERT INTO {info['table']} ({','.join(columns)}) VALUES ({placeholders})", values)
             except:
                 pass
     conn.commit()
@@ -860,7 +834,7 @@ TABLE_TEMPLATE = '''
                     <a href="/admin/delete/{{ table_type }}/{{ row[0] }}" onclick="return confirm('確定刪除？')">刪除</a>
                 </td>
             </form>
-        </tr>
+        <tr>
         {% endfor %}
     </table>
 </body>
