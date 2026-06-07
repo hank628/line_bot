@@ -98,25 +98,28 @@ def init_db():
         created_at TEXT
     )''')
     
-    # 預設英文單字
+    # 預設英文單字（含例句）
     c.execute("SELECT COUNT(*) FROM vocabulary")
     if c.fetchone()[0] == 0:
         default_vocab = [
             ("apple", "蘋果 🍎", "I eat an apple every day."),
             ("book", "書 📚", "This is a good book."),
+            ("computer", "電腦 💻", "I use computer to study."),
+            ("teacher", "老師 👩‍🏫", "My teacher is very kind."),
+            ("student", "學生 🧑‍🎓", "Every student should do homework."),
         ]
         c.executemany("INSERT INTO vocabulary (word, meaning, example) VALUES (?, ?, ?)", default_vocab)
     
-    # 預設統計名詞（6個不同名詞）
+    # 預設統計名詞
     c.execute("SELECT COUNT(*) FROM glossary_stats")
     if c.fetchone()[0] == 0:
         default_stats = [
-            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", "from scipy import stats\nt_stat, p_value = stats.ttest_ind(group1, group2)", 1),
-            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", "from scipy import stats\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", "from scipy import stats\nr, p_value = stats.pearsonr(x, y)", 1),
-            ("regression", "迴歸分析", "建立自變數與依變數之間的預測模型", "from sklearn.linear_model import LinearRegression\nmodel = LinearRegression()\nmodel.fit(X, y)", 1),
-            ("Chi-square", "卡方檢定", "檢驗兩個類別變數之間是否獨立", "from scipy import stats\nchi2, p_value, dof, expected = stats.chi2_contingency(contingency_table)", 0),
-            ("p-value", "p值", "在虛無假設為真下，觀察到當前結果或更極端結果的機率", "if p_value < 0.05:\n    print('統計顯著')", 1),
+            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
+             "from scipy import stats\nimport numpy as np\n\n# 兩組數據\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\n# 獨立樣本 t 檢定\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')\n\nif p_value < 0.05:\n    print('達統計顯著')\nelse:\n    print('未達統計顯著')", 1),
+            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
+             "from scipy import stats\n\n# 三組數據\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\n# 單因子變異數分析\nf_stat, p_value = stats.f_oneway(group1, group2, group3)\n\nprint(f'F值: {f_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
+            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
+             "from scipy import stats\nimport numpy as np\n\n# 兩組數據\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\n# 皮爾森相關係數\nr, p_value = stats.pearsonr(x, y)\n\nprint(f'相關係數 r: {r:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
         ]
         c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
     
@@ -125,9 +128,13 @@ def init_db():
     if c.fetchone()[0] == 0:
         default_socio = [
             ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
-            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
-            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
+            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象，運動參與也受此影響", 1),
+            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待與刻板印象", 1),
             ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
+            ("symbolic interactionism", "符號互動論", "透過運動中的符號、語言和互動來理解社會意義的理論視角", 0),
+            ("conflict theory", "衝突理論", "檢視運動如何反映和強化社會不平等與權力關係", 1),
+            ("commercialization", "商業化", "運動逐漸被市場邏輯主導，追求利潤極大化的現象", 0),
+            ("doping", "禁藥使用", "運動員使用禁用物質以提升表現，涉及倫理與健康議題", 1),
         ]
         c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
     
@@ -135,9 +142,13 @@ def init_db():
     c.execute("SELECT COUNT(*) FROM glossary_outdoor")
     if c.fetchone()[0] == 0:
         default_outdoor = [
-            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
-            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
+            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程：具體經驗→反思觀察→抽象概念→主動驗證", 1),
+            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度，確保心理安全感", 1),
+            ("full value contract", "全價值契約", "團體成員共同建立的參與規範、目標和承諾，確保每個人的價值被尊重", 1),
             ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
+            ("comfort zone", "舒適圈", "個人感到熟悉、安全、無壓力的狀態區域", 0),
+            ("stretch zone", "伸展圈", "在支持環境下適度挑戰自我，促進成長的區域", 1),
+            ("ropes course", "繩索課程", "利用高低空繩索設施進行的體驗教育活動", 0),
         ]
         c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
     
@@ -147,44 +158,51 @@ def init_db():
 
 init_db()
 
-# ========== 天氣函數 ==========
+# ========== 天氣函數（修正版 - 備用 Open-Meteo）==========
 def get_weather_taiwan_city(city_name="臺北市"):
-    api_city = CITY_MAPPING.get(city_name, city_name)
+    """使用 Open-Meteo API 取得天氣（穩定免費）"""
+    # 城市對應經緯度
+    city_coords = {
+        "臺北市": (25.0330, 121.5654),
+        "新北市": (25.0111, 121.4458),
+        "桃園市": (24.9936, 121.3010),
+        "臺中市": (24.1478, 120.6736),
+        "臺南市": (22.9997, 120.2270),
+        "高雄市": (22.6273, 120.3014),
+        "臺東縣": (22.7583, 121.1445),
+    }
+    
+    lat, lon = city_coords.get(city_name, (25.0330, 121.5654))
+    
     try:
-        url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization={CWA_API_KEY}&locationName={api_city}"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            location = data.get('records', {}).get('location', [])
-            if location:
-                weather_elements = location[0].get('weatherElement', [])
-                wx_data = None
-                temp_data = None
-                for elem in weather_elements:
-                    if elem.get('elementName') == 'Wx':
-                        wx_data = elem.get('time', [])[0].get('parameter', {}).get('parameterName', '')
-                    if elem.get('elementName') == 'T':
-                        temp_data = elem.get('time', [])[0].get('parameter', {}).get('parameterName', '')
-                wx_map = {"晴": "☀️晴", "多雲": "⛅多雲", "陰": "☁️陰", "雨": "🌧️雨", "雷雨": "⛈️雷雨", "霧": "🌫️霧"}
-                wx_display = wx_map.get(wx_data, wx_data) if wx_data else "🌡️"
-                temp_display = f"{temp_data}°C" if temp_data else "?"
-                return f"{wx_display} {temp_display}"
+            temp = data['current_weather']['temperature']
+            code = data['current_weather']['weathercode']
+            weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
+            weather = weather_codes.get(code, "🌡️")
+            return f"{weather} {int(temp)}°C"
     except Exception as e:
         print(f"天氣 API 錯誤: {e}")
-    return "晴天 24°C"
+    
+    return "晴天 26°C"
 
 def get_weather_by_coords(lat, lon):
     try:
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&accept-language=zh-TW"
-        r = requests.get(url, headers={'User-Agent': 'LineBot/1.0'}, timeout=5)
-        data = r.json()
-        city = data.get('address', {}).get('city', '') or data.get('address', {}).get('town', '') or data.get('address', {}).get('county', '')
-        for key, value in CITY_MAPPING.items():
-            if key in city or city in key:
-                return get_weather_taiwan_city(value)
-        return get_weather_taiwan_city("臺北市")
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            temp = data['current_weather']['temperature']
+            code = data['current_weather']['weathercode']
+            weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
+            weather = weather_codes.get(code, "🌡️")
+            return f"{weather} {int(temp)}°C"
     except:
-        return get_weather_taiwan_city("臺北市")
+        pass
+    return "晴天 26°C"
 
 def get_city_from_coords(lat, lon):
     try:
@@ -266,6 +284,14 @@ def get_outdoor_detail(term_id):
     conn.close()
     return result
 
+def get_random_vocab():
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT word, meaning, example FROM vocabulary ORDER BY RANDOM() LIMIT 1")
+    result = c.fetchone()
+    conn.close()
+    return result
+
 # ========== 待辦推播 ==========
 def push_todos():
     tz = pytz.timezone('Asia/Taipei')
@@ -331,7 +357,7 @@ def handle_follow(event):
               (user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
     conn.close()
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 查詢台灣天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 選擇科目\n• ✅待辦 - 管理待辦事項"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 查詢天氣\n• 📚英字 - 隨機英文單字\n• 📚課程 - 選擇科目\n• ✅待辦 - 管理待辦事項"
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         line_bot_api.reply_message(
@@ -386,15 +412,15 @@ def handle_message(event):
             quick_reply=get_main_quick_reply()
         )
     
-    # 英文單字
+    # 英文單字（含例句）
     elif msg_lower in ["單字", "english", "vocab"]:
-        conn = sqlite3.connect('course_bot.db')
-        c = conn.cursor()
-        c.execute("SELECT word, meaning FROM vocabulary ORDER BY RANDOM() LIMIT 1")
-        result = c.fetchone()
-        conn.close()
+        result = get_random_vocab()
         if result:
-            reply = TextMessage(text=f"📖 {result[0]} = {result[1]}", quick_reply=get_main_quick_reply())
+            word, meaning, example = result
+            text = f"📖 {word} = {meaning}"
+            if example:
+                text += f"\n📝 例句：{example}"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
@@ -437,7 +463,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_course_quick_reply())
     
-    # ========== 數字查詢（修正版）==========
+    # ========== 數字查詢（修正版 - 各科目獨立）==========
     elif msg_lower.isdigit():
         num = int(msg_lower)
         last_subject = session.get('last_subject', '')
@@ -445,8 +471,7 @@ def handle_message(event):
         if last_subject == 'stats':
             stats_list = get_stats_list()
             if 1 <= num <= len(stats_list):
-                correct_id = stats_list[num-1][0]  # 獲取正確的資料庫 ID
-                detail = get_stats_detail(correct_id)
+                detail = get_stats_detail(stats_list[num-1][0])
                 if detail:
                     term, trans, definition, code = detail
                     text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
@@ -461,8 +486,7 @@ def handle_message(event):
         elif last_subject == 'socio':
             socio_list = get_socio_list()
             if 1 <= num <= len(socio_list):
-                correct_id = socio_list[num-1][0]
-                detail = get_socio_detail(correct_id)
+                detail = get_socio_detail(socio_list[num-1][0])
                 if detail:
                     term, trans, definition = detail
                     text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
@@ -475,8 +499,7 @@ def handle_message(event):
         elif last_subject == 'outdoor':
             outdoor_list = get_outdoor_list()
             if 1 <= num <= len(outdoor_list):
-                correct_id = outdoor_list[num-1][0]
-                detail = get_outdoor_detail(correct_id)
+                detail = get_outdoor_detail(outdoor_list[num-1][0])
                 if detail:
                     term, trans, definition = detail
                     text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
@@ -487,11 +510,10 @@ def handle_message(event):
                 reply = TextMessage(text=f"請輸入 1-{len(outdoor_list)} 之間的數字", quick_reply=get_course_quick_reply())
         
         else:
-            # 如果沒有選科目，嘗試用數字查詢所有科目（優先統計）
+            # 沒有選科目時，預設查統計
             stats_list = get_stats_list()
             if 1 <= num <= len(stats_list):
-                correct_id = stats_list[num-1][0]
-                detail = get_stats_detail(correct_id)
+                detail = get_stats_detail(stats_list[num-1][0])
                 if detail:
                     term, trans, definition, code = detail
                     text = f"📖 **{term}**\n🀄️ {trans}\n📝 {definition}"
