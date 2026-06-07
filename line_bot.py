@@ -3,7 +3,8 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage, FlexMessage
+    ReplyMessageRequest, TextMessage, FlexMessage,
+    QuickReply, QuickReplyItem, MessageAction
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent
 import os
@@ -43,22 +44,19 @@ def get_weather(city="Taipei"):
         pass
     return f"🌤️ {city}：多雲時晴，24-28°C"
 
-# ========== 主選單 ==========
+# ========== 快速回覆選單 ==========
 def create_main_menu():
-    return FlexMessage(
-        alt_text="功能選單",
-        contents={
-            "type": "bubble",
-            "header": {"type": "box", "layout": "vertical", "contents": [
-                {"type": "text", "text": "🤖 功能選單", "weight": "bold", "size": "xl", "align": "center"}
-            ]},
-            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": [
-                {"type": "button", "style": "primary", "color": "#1E88E5", "action": {"type": "postback", "label": "🌤️ 天氣", "data": "weather", "displayText": "天氣"}},
-                {"type": "button", "style": "primary", "color": "#43A047", "action": {"type": "postback", "label": "📚 英文", "data": "vocab", "displayText": "英文"}},
-                {"type": "button", "style": "primary", "color": "#FB8C00", "action": {"type": "postback", "label": "🎓 助理", "data": "assistant", "displayText": "教學助理"}},
-                {"type": "button", "style": "primary", "color": "#8E24AA", "action": {"type": "postback", "label": "✅ 待辦", "data": "todo", "displayText": "待辦事項"}}
-            ]}
-        }
+    """建立快速回覆按鈕選單"""
+    return TextMessage(
+        text="🤖 課程小幫手\n\n請選擇功能：",
+        quick_reply=QuickReply(
+            items=[
+                QuickReplyItem(action=MessageAction(label="🌤️ 天氣", text="天氣")),
+                QuickReplyItem(action=MessageAction(label="📚 英文單字", text="單字")),
+                QuickReplyItem(action=MessageAction(label="🎓 教學助理", text="教學助理")),
+                QuickReplyItem(action=MessageAction(label="✅ 待辦事項", text="待辦")),
+            ]
+        )
     )
 
 # ========== 路由 ==========
