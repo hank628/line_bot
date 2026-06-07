@@ -6,7 +6,7 @@ from linebot.v3.messaging import (
     ReplyMessageRequest, PushMessageRequest, TextMessage,
     QuickReply, QuickReplyItem, MessageAction
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent, LocationMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent
 import os
 import sqlite3
 import requests
@@ -25,39 +25,12 @@ CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-secret-key-here")
 TEACHER_USER_ID = os.environ.get("TEACHER_USER_ID", "")
-CWA_API_KEY = "CWA-C9CEAB42-D25C-428F-971E-61C4A15FB202"
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
-
-# ========== 台灣縣市對照表 ==========
-CITY_MAPPING = {
-    "台北": "臺北市", "台北市": "臺北市", "臺北": "臺北市", "臺北市": "臺北市",
-    "新北": "新北市", "新北市": "新北市",
-    "桃園": "桃園市", "桃園市": "桃園市",
-    "台中": "臺中市", "台中市": "臺中市", "臺中": "臺中市", "臺中市": "臺中市",
-    "台南": "臺南市", "台南市": "臺南市", "臺南": "臺南市", "臺南市": "臺南市",
-    "高雄": "高雄市", "高雄市": "高雄市",
-    "基隆": "基隆市", "基隆市": "基隆市",
-    "新竹": "新竹市", "新竹市": "新竹市",
-    "新竹縣": "新竹縣",
-    "苗栗": "苗栗縣", "苗栗縣": "苗栗縣",
-    "彰化": "彰化縣", "彰化縣": "彰化縣",
-    "南投": "南投縣", "南投縣": "南投縣",
-    "雲林": "雲林縣", "雲林縣": "雲林縣",
-    "嘉義": "嘉義市", "嘉義市": "嘉義市",
-    "嘉義縣": "嘉義縣",
-    "屏東": "屏東縣", "屏東縣": "屏東縣",
-    "宜蘭": "宜蘭縣", "宜蘭縣": "宜蘭縣",
-    "花蓮": "花蓮縣", "花蓮縣": "花蓮縣",
-    "台東": "臺東縣", "台東縣": "臺東縣", "臺東": "臺東縣", "臺東縣": "臺東縣",
-    "澎湖": "澎湖縣", "澎湖縣": "澎湖縣",
-    "金門": "金門縣", "金門縣": "金門縣",
-    "連江": "連江縣", "連江縣": "連江縣", "馬祖": "連江縣",
-}
 
 # ========== 初始化資料庫 ==========
 def init_db():
@@ -206,27 +179,10 @@ def init_db():
 
 init_db()
 
-# ========== 天氣函數（中央氣象署 API + 備用）==========
-def get_weather_by_coords(lat, lon):
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit=celsius&timezone=Asia/Taipei"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            temp = data['current_weather']['temperature']
-            code = data['current_weather']['weathercode']
-            weather_codes = {0: "☀️晴天", 1: "🌤️晴時多雲", 2: "⛅多雲", 3: "☁️陰天", 61: "🌧️下雨", 95: "⛈️雷雨"}
-            weather = weather_codes.get(code, "🌡️")
-            return f"{weather} {int(temp)}°C"
-    except:
-        pass
-    return "未知"
-
-# ========== 6個常駐按鈕選單 ==========
+# ========== 5個常駐按鈕選單（移除天氣）==========
 def get_main_quick_reply():
     return QuickReply(
         items=[
-            QuickReplyItem(action=MessageAction(label="🌤️天氣", text="天氣")),
             QuickReplyItem(action=MessageAction(label="📚英字", text="單字")),
             QuickReplyItem(action=MessageAction(label="📊統計", text="統計")),
             QuickReplyItem(action=MessageAction(label="⚽社會", text="社會學")),
@@ -399,7 +355,7 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機5個英文單字\n• 📊統計 - 查看統計名詞\n• ⚽社會 - 查看社會學名詞\n• 🏕️探索 - 查看探索教育名詞\n• ✅待辦 - 管理待辦事項\n\n📝 查詢方式：\n• 統計 3 或 se3\n• 社會學 2 或 ss2\n• 探索 1 或 ae1"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 📚英字 - 隨機5個英文單字\n• 📊統計 - 查看統計名詞\n• ⚽社會 - 查看社會學名詞\n• 🏕️探索 - 查看探索教育名詞\n• ✅待辦 - 管理待辦事項\n\n📝 查詢方式：\n• 統計 3 或 se3\n• 社會學 2 或 ss2\n• 探索 1 或 ae1"
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -407,22 +363,6 @@ def handle_follow(event):
             ReplyMessageRequest(
                 reply_token=event.reply_token,
                 messages=[TextMessage(text=welcome_text, quick_reply=get_main_quick_reply())]
-            )
-        )
-
-@handler.add(MessageEvent, message=LocationMessageContent)
-def handle_location(event):
-    lat = event.message.latitude
-    lon = event.message.longitude
-    city = get_city_from_coords(lat, lon)
-    weather = get_weather_by_coords(lat, lon)
-    display_city = city if city else "您的位置"
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=f"📍 {display_city}\n🌡️ {weather}", quick_reply=get_main_quick_reply())]
             )
         )
 
@@ -443,12 +383,6 @@ def handle_message(event):
     
     if msg_lower in ["幫助", "選單", "menu", "help"]:
         reply = TextMessage(text="🤖 請點擊下方按鈕：\n\n📝 查詢方式：\n• 統計 3 或 se3\n• 社會學 2 或 ss2\n• 探索 1 或 ae1", quick_reply=get_main_quick_reply())
-    
-    elif msg_lower in ["天氣", "weather"]:
-        reply = TextMessage(
-            text="📍 如何取得天氣？\n\n1️⃣ 點選左下角「＋」\n2️⃣ 選擇「位置」\n3️⃣ 傳送目前位置",
-            quick_reply=get_main_quick_reply()
-        )
     
     elif msg_lower in ["單字", "english", "vocab"]:
         results = get_random_vocab(5)
