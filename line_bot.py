@@ -11,6 +11,8 @@ import os
 import sqlite3
 import requests
 import random
+import csv
+import io
 from datetime import datetime, timedelta
 from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -281,7 +283,7 @@ def get_random_vocab():
     conn.close()
     return result
 
-# ========== 待辦推播 ==========
+# ========== 待辦推播（只在早上7點和晚上9點，且有資料時才推播）==========
 def push_todos():
     tz = pytz.timezone('Asia/Taipei')
     now = datetime.now(tz)
@@ -291,9 +293,20 @@ def push_todos():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     
-    # 1. 老師個人待辦推播
+    # 只在早上7點或晚上9點執行
+    if now.hour == 7:
+        title = "🌅 早安！今天的待辦事項："
+        date_str = today_str
+    elif now.hour == 21:
+        title = "🌙 晚安！明天的待辦事項："
+        date_str = (now + timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        conn.close()
+        return
+    
+    # 1. 老師個人待辦推播（只在該時間點執行一次）
     if TEACHER_USER_ID:
-        c.execute("SELECT id, task FROM teacher_todos WHERE todo_date <= ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
+        c.execute("SELECT id, task FROM teacher_todos WHERE todo_date = ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
         teacher_todos = c.fetchall()
         for tid, task in teacher_todos:
             try:
@@ -305,7 +318,7 @@ def push_todos():
                 print(f"老師待辦推播失敗: {e}")
     
     # 2. 全班共同待辦推播
-    c.execute("SELECT id, task FROM class_todos WHERE todo_date <= ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
+    c.execute("SELECT id, task FROM class_todos WHERE todo_date = ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
     class_todos = c.fetchall()
     
     if class_todos:
@@ -323,17 +336,6 @@ def push_todos():
             c.execute("UPDATE class_todos SET status = 'done' WHERE id = ?", (tid,))
     
     # 3. 學生個人待辦推播（早上7點和晚上9點）
-    if now.hour == 7:
-        title = "🌅 早安！今天的待辦事項："
-        date_str = today_str
-    elif now.hour == 21:
-        title = "🌙 晚安！明天的待辦事項："
-        date_str = (now + timedelta(days=1)).strftime('%Y-%m-%d')
-    else:
-        conn.commit()
-        conn.close()
-        return
-    
     c.execute("SELECT user_id FROM users")
     users = [row[0] for row in c.fetchall()]
     
@@ -343,21 +345,20 @@ def push_todos():
         if todos:
             todo_list = "\n".join([f"{i+1}. {task}" for i, (_, task) in enumerate(todos)])
             message = f"{title}\n\n{todo_list}"
-        else:
-            message = f"{title}\n\n📋 目前沒有待辦事項"
-        try:
-            with ApiClient(configuration) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[TextMessage(text=message)]))
-        except Exception as e:
-            print(f"推播失敗 {user_id}: {e}")
+            try:
+                with ApiClient(configuration) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[TextMessage(text=message)]))
+            except Exception as e:
+                print(f"推播失敗 {user_id}: {e}")
     
     conn.commit()
     conn.close()
 
-# ========== 啟動排程 ==========
+# ========== 啟動排程（只設早上7點和晚上9點）==========
 scheduler = BackgroundScheduler(timezone='Asia/Taipei')
-scheduler.add_job(push_todos, CronTrigger(minute='*'))
+scheduler.add_job(push_todos, CronTrigger(hour=7, minute=0))
+scheduler.add_job(push_todos, CronTrigger(hour=21, minute=0))
 scheduler.start()
 
 # ========== LINE Bot 路由 ==========
@@ -385,7 +386,7 @@ def handle_follow(event):
     conn.commit()
     conn.close()
     
-    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕使用功能：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📊統計 - 統計專有名詞\n• ⚽社會 - 運動社會學\n• 🏕️探索 - 探索教育\n• ✅待辦 - 管理待辦事項"
+    welcome_text = "🤖 歡迎使用 HANK EduMentor！\n\n📌 點擊下方按鈕：\n• 🌤️天氣 - 傳送位置查天氣\n• 📚英字 - 隨機英文單字\n• 📊統計 - 查看統計名詞\n• ⚽社會 - 查看社會學名詞\n• 🏕️探索 - 查看探索教育名詞\n• ✅待辦 - 管理待辦事項\n\n📝 查詢方式：輸入「統計 1」查第1個統計名詞"
     
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -430,7 +431,7 @@ def handle_message(event):
     
     # ========== 主選單 ==========
     if msg_lower in ["幫助", "選單", "menu", "help"]:
-        reply = TextMessage(text="🤖 請點擊下方按鈕：", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text="🤖 請點擊下方按鈕：\n\n📝 查詢方式：輸入「統計 1」查第1個統計名詞", quick_reply=get_main_quick_reply())
     
     # ========== 天氣 ==========
     elif msg_lower in ["天氣", "weather"]:
@@ -451,13 +452,8 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
-    # ========== 統計 ==========
+    # ========== 統計列表 ==========
     elif msg_lower in ["統計", "statistics"]:
-        # 設定科目專用的 session flag
-        session['stats_active'] = True
-        session['socio_active'] = False
-        session['outdoor_active'] = False
-        session['stats_page'] = 1
         data, total = get_stats_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -465,18 +461,13 @@ def handle_message(event):
             text = f"📊 統計專有名詞 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」換頁"
+            text += f"\n💡 查詢方式：輸入「統計 數字」查詳細（例如：統計 1）\n💡 換頁：輸入「統計下一頁」或「統計上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
     
-    # ========== 社會學 ==========
+    # ========== 社會學列表 ==========
     elif msg_lower in ["社會學", "sociology"]:
-        # 設定科目專用的 session flag
-        session['stats_active'] = False
-        session['socio_active'] = True
-        session['outdoor_active'] = False
-        session['socio_page'] = 1
         data, total = get_socio_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -484,18 +475,13 @@ def handle_message(event):
             text = f"⚽ 運動社會學 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」換頁"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」查詳細（例如：社會學 1）\n💡 換頁：輸入「社會學下一頁」或「社會學上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
     
-    # ========== 探索教育 ==========
+    # ========== 探索教育列表 ==========
     elif msg_lower in ["探索", "outdoor"]:
-        # 設定科目專用的 session flag
-        session['stats_active'] = False
-        session['socio_active'] = False
-        session['outdoor_active'] = True
-        session['outdoor_page'] = 1
         data, total = get_outdoor_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
         
@@ -503,96 +489,92 @@ def handle_message(event):
             text = f"🏕️ 探索教育 (第1頁/共{total_pages}頁)\n\n"
             for i, (sid, term, trans) in enumerate(data, 1):
                 text += f"{i}. {term} - {trans}\n"
-            text += f"\n💡 輸入數字查詳細（1~{len(data)}），輸入「下一頁」換頁"
+            text += f"\n💡 查詢方式：輸入「探索 數字」查詳細（例如：探索 1）\n💡 換頁：輸入「探索下一頁」或「探索上一頁」"
             reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
             reply = TextMessage(text="🏕️ 暫無探索教育資料", quick_reply=get_main_quick_reply())
     
-    # ========== 分頁處理 ==========
-    elif msg_lower in ["下一頁", "上一頁"]:
-        # 檢查哪個科目是活躍的
-        if session.get('stats_active', False):
-            page = session.get('stats_page', 1)
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
+    # ========== 統計分頁 ==========
+    elif msg_lower.startswith("統計下一頁") or msg_lower.startswith("統計上一頁"):
+        page = 1
+        if "下一頁" in msg_lower:
+            page = 2
+        elif "上一頁" in msg_lower:
+            page = 0
+        data, total = get_stats_list(page)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        if page < 1:
+            page = 1
             data, total = get_stats_list(page)
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages and total_pages > 0:
-                page = total_pages
-                data, total = get_stats_list(page)
-            session['stats_page'] = page
-            session['stats_active'] = True
-            
-            if data:
-                text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
-                for i, (sid, term, trans) in enumerate(data, 1):
-                    text += f"{i}. {term} - {trans}\n"
-                text += f"\n💡 輸入數字查詳細"
-                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
-            else:
-                reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
+        elif page > total_pages:
+            page = total_pages
+            data, total = get_stats_list(page)
         
-        elif session.get('socio_active', False):
-            page = session.get('socio_page', 1)
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
-            data, total = get_socio_list(page)
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages and total_pages > 0:
-                page = total_pages
-                data, total = get_socio_list(page)
-            session['socio_page'] = page
-            session['socio_active'] = True
-            
-            if data:
-                text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
-                for i, (sid, term, trans) in enumerate(data, 1):
-                    text += f"{i}. {term} - {trans}\n"
-                text += f"\n💡 輸入數字查詳細"
-                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
-            else:
-                reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
-        
-        elif session.get('outdoor_active', False):
-            page = session.get('outdoor_page', 1)
-            if msg_lower == "下一頁":
-                page += 1
-            else:
-                page -= 1
-            page = max(1, page)
-            data, total = get_outdoor_list(page)
-            total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-            if page > total_pages and total_pages > 0:
-                page = total_pages
-                data, total = get_outdoor_list(page)
-            session['outdoor_page'] = page
-            session['outdoor_active'] = True
-            
-            if data:
-                text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
-                for i, (sid, term, trans) in enumerate(data, 1):
-                    text += f"{i}. {term} - {trans}\n"
-                text += f"\n💡 輸入數字查詳細"
-                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
-            else:
-                reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
+        if data:
+            text = f"📊 統計專有名詞 (第{page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「統計 數字」查詳細"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
         else:
-            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="📊 查無資料", quick_reply=get_main_quick_reply())
     
-    # ========== 數字查詢（使用科目專用 flag）==========
-    elif msg_lower.isdigit():
-        num = int(msg_lower)
+    # ========== 社會學分頁 ==========
+    elif msg_lower.startswith("社會學下一頁") or msg_lower.startswith("社會學上一頁"):
+        page = 1
+        if "下一頁" in msg_lower:
+            page = 2
+        elif "上一頁" in msg_lower:
+            page = 0
+        data, total = get_socio_list(page)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        if page < 1:
+            page = 1
+            data, total = get_socio_list(page)
+        elif page > total_pages:
+            page = total_pages
+            data, total = get_socio_list(page)
         
-        # 統計查詢
-        if session.get('stats_active', False):
-            page = session.get('stats_page', 1)
-            data, total = get_stats_list(page)
+        if data:
+            text = f"⚽ 運動社會學 (第{page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「社會學 數字」查詳細"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text="⚽ 查無資料", quick_reply=get_main_quick_reply())
+    
+    # ========== 探索教育分頁 ==========
+    elif msg_lower.startswith("探索下一頁") or msg_lower.startswith("探索上一頁"):
+        page = 1
+        if "下一頁" in msg_lower:
+            page = 2
+        elif "上一頁" in msg_lower:
+            page = 0
+        data, total = get_outdoor_list(page)
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        if page < 1:
+            page = 1
+            data, total = get_outdoor_list(page)
+        elif page > total_pages:
+            page = total_pages
+            data, total = get_outdoor_list(page)
+        
+        if data:
+            text = f"🏕️ 探索教育 (第{page}頁/共{total_pages}頁)\n\n"
+            for i, (sid, term, trans) in enumerate(data, 1):
+                text += f"{i}. {term} - {trans}\n"
+            text += f"\n💡 查詢方式：輸入「探索 數字」查詳細"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            reply = TextMessage(text="🏕️ 查無資料", quick_reply=get_main_quick_reply())
+    
+    # ========== 統計數字查詢（方案二：使用者輸入「統計 1」）==========
+    elif msg_lower.startswith("統計 "):
+        parts = msg_lower.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            num = int(parts[1])
+            data, total = get_stats_list(1)
             if 1 <= num <= len(data):
                 detail = get_stats_detail(data[num-1][0])
                 if detail:
@@ -605,11 +587,15 @@ def handle_message(event):
                     reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
-        
-        # 社會學查詢
-        elif session.get('socio_active', False):
-            page = session.get('socio_page', 1)
-            data, total = get_socio_list(page)
+        else:
+            reply = TextMessage(text="請輸入「統計 數字」，例如：統計 1", quick_reply=get_main_quick_reply())
+    
+    # ========== 社會學數字查詢 ==========
+    elif msg_lower.startswith("社會學 "):
+        parts = msg_lower.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            num = int(parts[1])
+            data, total = get_socio_list(1)
             if 1 <= num <= len(data):
                 detail = get_socio_detail(data[num-1][0])
                 if detail:
@@ -620,11 +606,15 @@ def handle_message(event):
                     reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
-        
-        # 探索教育查詢
-        elif session.get('outdoor_active', False):
-            page = session.get('outdoor_page', 1)
-            data, total = get_outdoor_list(page)
+        else:
+            reply = TextMessage(text="請輸入「社會學 數字」，例如：社會學 1", quick_reply=get_main_quick_reply())
+    
+    # ========== 探索教育數字查詢 ==========
+    elif msg_lower.startswith("探索 "):
+        parts = msg_lower.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            num = int(parts[1])
+            data, total = get_outdoor_list(1)
             if 1 <= num <= len(data):
                 detail = get_outdoor_detail(data[num-1][0])
                 if detail:
@@ -635,9 +625,43 @@ def handle_message(event):
                     reply = TextMessage(text="查無資料", quick_reply=get_main_quick_reply())
             else:
                 reply = TextMessage(text=f"請輸入 1-{len(data)} 之間的數字", quick_reply=get_main_quick_reply())
-        
         else:
-            reply = TextMessage(text="請先選擇一個科目（統計/社會學/探索）\n\n例如：輸入「統計」後再輸入數字", quick_reply=get_main_quick_reply())
+            reply = TextMessage(text="請輸入「探索 數字」，例如：探索 1", quick_reply=get_main_quick_reply())
+    
+    # ========== 關鍵字搜尋（保留）==========
+    elif msg_lower.startswith("查 "):
+        keyword = msg_lower[3:]
+        
+        # 先從統計找
+        conn = sqlite3.connect('course_bot.db')
+        c = conn.cursor()
+        c.execute("SELECT term, translation, definition, code FROM glossary_stats WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+        result = c.fetchone()
+        if result:
+            term, trans, definition, code = result
+            text = f"📖 **{term}** (統計)\n🀄️ {trans}\n📝 {definition}"
+            if code:
+                text += f"\n\n💻 程式碼：\n```\n{code}\n```"
+            reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+        else:
+            # 再從社會學找
+            c.execute("SELECT term, translation, definition FROM glossary_socio WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+            result = c.fetchone()
+            if result:
+                term, trans, definition = result
+                text = f"📖 **{term}** (社會學)\n🀄️ {trans}\n📝 {definition}"
+                reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+            else:
+                # 再從探索教育找
+                c.execute("SELECT term, translation, definition FROM glossary_outdoor WHERE term LIKE ? OR translation LIKE ? LIMIT 1", (f'%{keyword}%', f'%{keyword}%'))
+                result = c.fetchone()
+                if result:
+                    term, trans, definition = result
+                    text = f"📖 **{term}** (探索教育)\n🀄️ {trans}\n📝 {definition}"
+                    reply = TextMessage(text=text, quick_reply=get_main_quick_reply())
+                else:
+                    reply = TextMessage(text=f"❌ 查無「{keyword}」", quick_reply=get_main_quick_reply())
+        conn.close()
     
     # ========== 待辦事項 ==========
     elif msg_lower.startswith("新增 "):
@@ -706,11 +730,11 @@ def handle_message(event):
     
     # 取得我的 User ID
     elif "取得我的id" in msg_lower or "取得id" in msg_lower:
-        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}\n\n已設定為老師 ID", quick_reply=get_main_quick_reply())
+        reply = TextMessage(text=f"🔑 你的 LINE User ID 是：\n{user_id}", quick_reply=get_main_quick_reply())
     
     else:
         reply = TextMessage(
-            text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 統計名詞\n• 社會學 - 社會學名詞\n• 探索 - 探索教育\n• 新增 買牛奶 - 待辦\n• 取得我的ID - 獲取使用者ID",
+            text=f"你說了：「{msg}」\n\n📌 點擊下方按鈕：\n• 統計 - 查看統計名詞\n• 社會學 - 查看社會學名詞\n• 探索 - 查看探索教育名詞\n• 新增 買牛奶 - 待辦\n\n📝 查詢：輸入「統計 1」查第1個統計名詞",
             quick_reply=get_main_quick_reply()
         )
     
@@ -818,6 +842,44 @@ def admin_delete(table_type, id):
     conn.close()
     return redirect(f'/admin/{table_type}')
 
+# CSV 匯入功能（完整版）
+@app.route('/admin/import_csv/<table_type>', methods=['POST'])
+@login_required
+def admin_import_csv(table_type):
+    info = get_table_info(table_type)
+    if not info:
+        return redirect('/admin')
+    
+    if 'csv_file' not in request.files:
+        return redirect(f'/admin/{table_type}')
+    file = request.files['csv_file']
+    if file.filename == '':
+        return redirect(f'/admin/{table_type}')
+    
+    content = file.read().decode('utf-8-sig')
+    conn = sqlite3.connect('course_bot.db')
+    c = conn.cursor()
+    columns = info['columns']
+    
+    reader = csv.reader(io.StringIO(content))
+    headers = next(reader, None)  # 跳過標題列
+    
+    success_count = 0
+    for row in reader:
+        if len(row) >= len(columns):
+            values = row[:len(columns)]
+            placeholders = ','.join(['?' for _ in values])
+            try:
+                c.execute(f"INSERT INTO {info['table']} ({','.join(columns)}) VALUES ({placeholders})", values)
+                success_count += 1
+            except Exception as e:
+                print(f"匯入錯誤: {e}")
+    
+    conn.commit()
+    conn.close()
+    
+    return redirect(f'/admin/{table_type}')
+
 @app.route('/admin/student_todos')
 @login_required
 def admin_student_todos():
@@ -888,6 +950,16 @@ TABLE_TEMPLATE = '''
     <h1>{{ info.name }}管理</h1>
     <p><a href="/admin">← 返回首頁</a> | <a href="/logout">登出</a></p>
     
+    <div style="margin: 20px 0; padding: 15px; background: #e8f5e9;">
+        <h3>📤 匯入 CSV</h3>
+        <form method="post" action="/admin/import_csv/{{ table_type }}" enctype="multipart/form-data">
+            <input type="file" name="csv_file" accept=".csv" required>
+            <button type="submit">匯入</button>
+        </form>
+        <p style="font-size: 12px;">格式：{{ ', '.join(info.labels) }}</p>
+        <p style="font-size: 12px; color: #666;">※ CSV 第一行會自動跳過（視為標題列）</p>
+    </div>
+    
     <div style="margin: 20px 0; padding: 15px; background: #f0f0f0;">
         <h3>➕ 手動新增</h3>
         <form method="post" action="/admin/add/{{ table_type }}">
@@ -899,7 +971,7 @@ TABLE_TEMPLATE = '''
     </div>
     
     <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
-        <tr><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
+        <td><th>ID</th>{% for label in info.labels %}<th>{{ label }}</th>{% endfor %}<th>操作</th></tr>
         {% for row in rows %}
         <tr>
             <form method="post" action="/admin/edit/{{ table_type }}/{{ row[0] }}">
