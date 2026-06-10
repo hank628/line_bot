@@ -33,151 +33,168 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 # ========== 防重複推播記錄 ==========
-last_push_record = {}  # 記錄每天每時段是否已推播
+last_push_record = {}
 
-# ========== 初始化資料庫 ==========
+# ========== 初始化資料庫（安全版本 - 不會自動刪除資料）==========
 def init_db():
     import os
     db_path = 'course_bot.db'
     
-    need_rebuild = False
+    # 檢查資料庫是否已存在且有效
     if os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
         try:
+            conn = sqlite3.connect(db_path)
+            c = conn.cursor()
+            # 檢查必要的資料表是否存在且有資料
+            c.execute("SELECT COUNT(*) FROM glossary_stats")
+            stats_count = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM glossary_socio")
-        except:
-            need_rebuild = True
-        conn.close()
+            socio_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM glossary_outdoor")
+            outdoor_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM vocabulary")
+            vocab_count = c.fetchone()[0]
+            conn.close()
+            
+            print(f"✅ 資料庫已存在 - 統計:{stats_count} 社會學:{socio_count} 探索:{outdoor_count} 單字:{vocab_count}")
+            
+            # 如果所有資料表都有資料，直接返回，不重建
+            if stats_count > 0 and socio_count > 0 and outdoor_count > 0 and vocab_count > 0:
+                print("✅ 資料庫完整，跳過初始化")
+                return
+        except Exception as e:
+            print(f"資料庫檢查錯誤: {e}")
+            # 資料庫可能損壞，需要重建
     
-    if need_rebuild or not os.path.exists(db_path):
-        if os.path.exists(db_path):
-            os.remove(db_path)
-            print("✅ 已刪除舊資料庫")
-        
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        
-        c.execute('''CREATE TABLE vocabulary (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            word TEXT UNIQUE,
-            meaning TEXT
-        )''')
-        
-        c.execute('''CREATE TABLE glossary_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            term TEXT UNIQUE,
-            translation TEXT,
-            definition TEXT,
-            code TEXT,
-            is_starred INTEGER DEFAULT 0
-        )''')
-        
-        c.execute('''CREATE TABLE glossary_socio (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            term TEXT UNIQUE,
-            translation TEXT,
-            definition TEXT,
-            is_starred INTEGER DEFAULT 0
-        )''')
-        
-        c.execute('''CREATE TABLE glossary_outdoor (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            term TEXT UNIQUE,
-            translation TEXT,
-            definition TEXT,
-            is_starred INTEGER DEFAULT 0
-        )''')
-        
-        c.execute('''CREATE TABLE student_todos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            task TEXT,
-            todo_date TEXT,
-            created_at TEXT,
-            status TEXT DEFAULT 'pending'
-        )''')
-        
-        c.execute('''CREATE TABLE teacher_todos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task TEXT,
-            todo_date TEXT,
-            todo_time TEXT,
-            created_at TEXT,
-            status TEXT DEFAULT 'pending'
-        )''')
-        
-        c.execute('''CREATE TABLE class_todos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task TEXT,
-            todo_date TEXT,
-            todo_time TEXT,
-            created_at TEXT,
-            status TEXT DEFAULT 'pending'
-        )''')
-        
-        c.execute('''CREATE TABLE users (
-            user_id TEXT PRIMARY KEY,
-            created_at TEXT
-        )''')
-        
-        # 預設英文單字
-        default_vocab = [
-            ("apple", "蘋果 🍎"),
-            ("book", "書 📚"),
-            ("computer", "電腦 💻"),
-            ("teacher", "老師 👩‍🏫"),
-            ("student", "學生 🧑‍🎓"),
-        ]
-        c.executemany("INSERT INTO vocabulary (word, meaning) VALUES (?, ?)", default_vocab)
-        print("✅ 已寫入英文單字")
-        
-        # 預設統計名詞
-        default_stats = [
-            ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
-             "from scipy import stats\nimport numpy as np\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
-            ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
-             "from scipy import stats\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
-            ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
-             "from scipy import stats\n\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\nr, p_value = stats.pearsonr(x, y)", 1),
-        ]
-        c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
-        print("✅ 已寫入統計名詞")
-        
-        # 預設社會學名詞
-        default_socio = [
-            ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
-            ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
-            ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
-            ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
-        ]
-        c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
-        print("✅ 已寫入社會學名詞")
-        
-        # 預設探索教育名詞
-        default_outdoor = [
-            ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
-            ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
-            ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
-        ]
-        c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
-        print("✅ 已寫入探索教育名詞")
-        
-        conn.commit()
-        
-        c.execute("SELECT COUNT(*) FROM vocabulary")
-        print(f"📖 英文單字筆數: {c.fetchone()[0]}")
-        c.execute("SELECT COUNT(*) FROM glossary_stats")
-        print(f"📊 統計名詞筆數: {c.fetchone()[0]}")
-        c.execute("SELECT COUNT(*) FROM glossary_socio")
-        print(f"⚽ 社會學名詞筆數: {c.fetchone()[0]}")
-        c.execute("SELECT COUNT(*) FROM glossary_outdoor")
-        print(f"🏕️ 探索教育名詞筆數: {c.fetchone()[0]}")
-        
-        conn.close()
-        print("✅ 資料庫初始化完成")
-    else:
-        print("✅ 資料庫已存在，跳過初始化")
+    # 備份舊資料庫（如果存在）
+    if os.path.exists(db_path):
+        backup_path = f"{db_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        os.rename(db_path, backup_path)
+        print(f"⚠️ 已備份舊資料庫至: {backup_path}")
+    
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    
+    # 建立所有資料表
+    c.execute('''CREATE TABLE vocabulary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT UNIQUE,
+        meaning TEXT
+    )''')
+    
+    c.execute('''CREATE TABLE glossary_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term TEXT UNIQUE,
+        translation TEXT,
+        definition TEXT,
+        code TEXT,
+        is_starred INTEGER DEFAULT 0
+    )''')
+    
+    c.execute('''CREATE TABLE glossary_socio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term TEXT UNIQUE,
+        translation TEXT,
+        definition TEXT,
+        is_starred INTEGER DEFAULT 0
+    )''')
+    
+    c.execute('''CREATE TABLE glossary_outdoor (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term TEXT UNIQUE,
+        translation TEXT,
+        definition TEXT,
+        is_starred INTEGER DEFAULT 0
+    )''')
+    
+    c.execute('''CREATE TABLE student_todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        task TEXT,
+        todo_date TEXT,
+        created_at TEXT,
+        status TEXT DEFAULT 'pending'
+    )''')
+    
+    c.execute('''CREATE TABLE teacher_todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task TEXT,
+        todo_date TEXT,
+        todo_time TEXT,
+        created_at TEXT,
+        status TEXT DEFAULT 'pending'
+    )''')
+    
+    c.execute('''CREATE TABLE class_todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task TEXT,
+        todo_date TEXT,
+        todo_time TEXT,
+        created_at TEXT,
+        status TEXT DEFAULT 'pending'
+    )''')
+    
+    c.execute('''CREATE TABLE users (
+        user_id TEXT PRIMARY KEY,
+        created_at TEXT
+    )''')
+    
+    # 預設英文單字
+    default_vocab = [
+        ("apple", "蘋果 🍎"),
+        ("book", "書 📚"),
+        ("computer", "電腦 💻"),
+        ("teacher", "老師 👩‍🏫"),
+        ("student", "學生 🧑‍🎓"),
+    ]
+    c.executemany("INSERT INTO vocabulary (word, meaning) VALUES (?, ?)", default_vocab)
+    print("✅ 已寫入預設英文單字")
+    
+    # 預設統計名詞
+    default_stats = [
+        ("t-test", "t檢定", "比較兩組樣本平均數是否有顯著差異", 
+         "from scipy import stats\nimport numpy as np\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\n\nt_stat, p_value = stats.ttest_ind(group1, group2)\n\nprint(f't值: {t_stat:.4f}')\nprint(f'p值: {p_value:.4f}')", 1),
+        ("ANOVA", "變異數分析", "比較三組以上樣本平均數是否有顯著差異", 
+         "from scipy import stats\n\ngroup1 = [85, 88, 90, 92, 86]\ngroup2 = [78, 82, 80, 85, 79]\ngroup3 = [75, 78, 76, 80, 77]\n\nf_stat, p_value = stats.f_oneway(group1, group2, group3)", 1),
+        ("correlation", "相關分析", "探討兩個連續變數之間的線性關係強度", 
+         "from scipy import stats\n\nx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\ny = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]\n\nr, p_value = stats.pearsonr(x, y)", 1),
+    ]
+    c.executemany("INSERT INTO glossary_stats (term, translation, definition, code, is_starred) VALUES (?, ?, ?, ?, ?)", default_stats)
+    print("✅ 已寫入預設統計名詞")
+    
+    # 預設社會學名詞
+    default_socio = [
+        ("sports socialization", "運動社會化", "個人透過運動參與學習社會規範、價值觀和行為模式的過程", 1),
+        ("social stratification", "社會階層化", "社會依據財富、權力、聲望等資源將人群分層的現象", 1),
+        ("gender ideology", "性別意識形態", "社會對男性與女性在運動中應有的角色、行為和價值的期待", 1),
+        ("sports fan", "運動迷", "對特定運動隊伍、運動員或運動項目有強烈情感認同和支持的人", 1),
+    ]
+    c.executemany("INSERT INTO glossary_socio (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_socio)
+    print("✅ 已寫入預設社會學名詞")
+    
+    # 預設探索教育名詞
+    default_outdoor = [
+        ("experiential learning", "體驗式學習", "透過直接經驗和反思來學習的循環過程", 1),
+        ("challenge by choice", "自願挑戰", "參與者可依自身意願決定是否參與及參與程度", 1),
+        ("debriefing", "反思回饋", "活動結束後引導參與者分享經驗、感受和學習的結構化討論過程", 1),
+    ]
+    c.executemany("INSERT INTO glossary_outdoor (term, translation, definition, is_starred) VALUES (?, ?, ?, ?)", default_outdoor)
+    print("✅ 已寫入預設探索教育名詞")
+    
+    conn.commit()
+    
+    # 驗證
+    c.execute("SELECT COUNT(*) FROM vocabulary")
+    print(f"📖 英文單字筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_stats")
+    print(f"📊 統計名詞筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_socio")
+    print(f"⚽ 社會學名詞筆數: {c.fetchone()[0]}")
+    c.execute("SELECT COUNT(*) FROM glossary_outdoor")
+    print(f"🏕️ 探索教育名詞筆數: {c.fetchone()[0]}")
+    
+    conn.close()
+    print("✅ 資料庫初始化完成")
 
 init_db()
 
@@ -285,7 +302,7 @@ def push_todos():
     conn = sqlite3.connect('course_bot.db')
     c = conn.cursor()
     
-    # 1. 老師個人待辦推播（只要有符合條件就推，但同一天只推一次）
+    # 1. 老師個人待辦推播
     if TEACHER_USER_ID and not last_push_record.get(teacher_key, False):
         c.execute("SELECT id, task FROM teacher_todos WHERE todo_date = ? AND todo_time <= ? AND status = 'pending'", (today_str, now_time))
         teacher_todos = c.fetchall()
@@ -320,7 +337,6 @@ def push_todos():
                 c.execute("UPDATE class_todos SET status = 'done' WHERE id = ?", (tid,))
     
     # 3. 學生個人待辦推播（早上7點時段和晚上9點時段）
-    # 早上時段：7:00 - 7:05
     if now.hour == 7 and now.minute <= 5 and not last_push_record.get(morning_key, False):
         last_push_record[morning_key] = True
         title = "🌅 早安！今天的待辦事項："
@@ -436,7 +452,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📖 暫無單字", quick_reply=get_main_quick_reply())
     
-    # ========== 統計列表（頁碼）==========
+    # ========== 統計列表 ==========
     elif msg_lower == "統計":
         data, total = get_stats_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -470,7 +486,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="📊 暫無統計資料", quick_reply=get_main_quick_reply())
     
-    # ========== 社會學列表（頁碼）==========
+    # ========== 社會學列表 ==========
     elif msg_lower == "社會學":
         data, total = get_socio_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -504,7 +520,7 @@ def handle_message(event):
         else:
             reply = TextMessage(text="⚽ 暫無社會學資料", quick_reply=get_main_quick_reply())
     
-    # ========== 探索教育列表（頁碼）==========
+    # ========== 探索教育列表 ==========
     elif msg_lower == "探索":
         data, total = get_outdoor_list(1)
         total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -1002,7 +1018,7 @@ TABLE_TEMPLATE = '''
             </form>
         </tr>
         {% endfor %}
-    </table>
+    <table>
 </body>
 </html>
 '''
